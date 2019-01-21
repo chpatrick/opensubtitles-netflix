@@ -1,0 +1,26 @@
+  {
+    "name": "OpenSubtitles for Netflix",
+    "version": "1.0",
+    "description": "Load OpenSubtitles subtitles on Netflix",
+    "background": {
+      "scripts": ["background.js"],
+      "persistent": false
+    },
+    "page_action": {
+      "default_title": "Download subtitles"
+    },
+    "permissions": [
+      "activeTab"
+    ],
+    "content_scripts": [
+       {
+         "matches": ["*://*.netflix.com/*"],
+         "js": ["content-script.js"],
+         "run_at": "document_start"
+       }
+     ],
+    "web_accessible_resources": [
+        "player-payload.js"
+    ],
+    "manifest_version": 2
+  }

@@ -1,0 +1,103 @@
+#opensubtitles-dialog {
+  position: absolute;
+  padding: 2em;
+  top: 5vh;
+  bottom: 5vh;
+  left: 20vw;
+  right: 20em;
+  z-index: 10000;
+  background-color: black;
+  color: white;
+  font-size: 10pt;
+  background-color: #060606;
+}
+
+#netflix-opensubtitles-subtitle-table {
+  display: block;
+  overflow-y: scroll;
+  height: 40vh;
+  background: linear-gradient(to bottom, #080808 0%,#111 50%,#080808 100%);
+}
+
+#netflix-opensubtitles-subtitle-table td {
+  padding: 0.5em 0.4em;
+}
+
+td.netflix-opensubtitles-subtitle-row {
+  cursor: pointer;
+}
+
+td.netflix-opensubtitles-subtitle-row-chosen {
+  color: #e50914;
+  text-decoration: underline;
+}
+
+td.netflix-opensubtitles-subtitle-row:hover {
+  text-decoration: underline;
+}
+
+.netflix-opensubtitles-pin-cell-pinned, tr:hover > .netflix-opensubtitles-pin-cell {
+  background-image: url('./push-pin.svg');
+}
+
+.netflix-opensubtitles-pin-cell {
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1em;
+  width: 1em;
+}
+
+#netflix-opensubtitles-timing-adjuster {
+  background-color: transparent;
+  border: 1px solid white;
+  padding: 0.5em;
+  text-align: right;
+}
+
+#netflix-opensubtitles-buttons {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  display: inline-block
+}
+
+.netflix-opensubtitles-button {
+  background-color: transparent;
+  border: 1px solid white;
+  padding: 0.5em;
+  display: inline-block;
+  margin-left: 1em;
+}
+
+.netflix-opensubtitles-button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.netflix-opensubtitles-step {
+  border-bottom: 1px solid #222;
+  padding-bottom: 1em;
+}
+
+#opensubtitles-about-dialog {
+  z-index: 10001;
+  background: linear-gradient(to bottom, #eee 0%,#b7b7b7 100%) !important;
+  color: black;
+  font-size: 10pt;
+  background-color: #060606;
+
+  width: 40em;
+  height: 10em;
+  padding: 1em;
+
+  position: absolute;
+  top: 50%;
+  left: 50%;
+
+  margin: -5em 0 0 -20em;
+}
+
+#opensubtitles-about-dialog .netflix-opensubtitles-button {
+  border: 1px solid black;
+  color: black;
+}
