@@ -90,12 +90,24 @@ const loadSubtitles = (content: VideoInfo) => {
 
   getToken().then(token => openSubtitles.SearchSubtitles(token, [ query ]))
   .then(results => {
+    const subs = results.data as SubMetadata[];
+
+
     uiState.subtitles = { state: "done", result: {
-      subtitles: results.data as SubMetadata[]
+      subtitles: subs
      }
-   };
+    };
+    refresh();
+
+    const pinnedLanguages = getPinnedLanguages();
+    const pinnedSubs = subs.filter((sub: SubMetadata) => pinnedLanguages.has(sub.ISO639));
+    // If there's exactly one pinned sub, download it immediately.
+    if (pinnedSubs.length == 1) {
+      downloadSub(pinnedSubs[0]);
+    }
   }, reason => {
     uiState.subtitles = { state: "failed" };
+    refresh();
   });
 }
 
