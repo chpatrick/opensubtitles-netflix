@@ -43,7 +43,12 @@ module.exports = env => ({
       'OS_USER_AGENT': JSON.stringify((env && env.userAgent) || 'TemporaryUserAgent'),
       'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.extension.getURL('player-payload.js')"
     }),
-    new CopyWebpackPlugin([ 'src/manifest.json' ])
+    new CopyWebpackPlugin([
+      'src/manifest.json',
+      'assets/logo-128.png',
+      'assets/logo-48.png',
+      'assets/logo-16.png'
+    ])
   ],
   devServer: {
     writeToDisk: true,

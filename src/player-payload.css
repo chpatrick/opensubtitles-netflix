@@ -87,17 +87,23 @@ td.netflix-opensubtitles-subtitle-row:hover {
   background-color: #060606;
 
   width: 40em;
-  height: 10em;
+  height: 11.2em;
   padding: 1em;
 
   position: absolute;
   top: 50%;
   left: 50%;
 
-  margin: -5em 0 0 -20em;
+  margin: -5.6em 0 0 -20em;
 }
 
 #opensubtitles-about-dialog .netflix-opensubtitles-button {
   border: 1px solid black;
   color: black;
+}
+
+.netflix-opensubtitles-about-section {
+  border-top: 1px solid gray;
+  padding-top: 0.5em;
+  margin-top: 0.5em;
 }
