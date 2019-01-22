@@ -310,7 +310,7 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
   } else {
     const isPinned = (sub: SubMetadata) => pinnedLanguages.has(sub.ISO639);
 
-    const sortedSubs = state.result.subtitles.slice(0).sort(compareBy(comparing(sub => isPinned(sub) ? 0 : 1), comparing(sub => sub.LanguageName), comparing(sub => sub.SubFileName)));
+    const sortedSubs = state.result.subtitles.slice(0).sort(compareBy(comparing(sub => isPinned(sub) ? 0 : 1), comparing(sub => sub.LanguageName), comparing(sub => sub.SubFileName.toLowerCase())));
 
     const subtitleRows = sortedSubs.map(sub => {
       const isActive = props.state.convertedSub.state == "done" && props.state.convertedSub.result.baseSub.IDSubtitle === sub.IDSubtitle;
