@@ -1,6 +1,7 @@
 const path = require('path');
 const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin')
+const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = env => ({
   entry: {
@@ -48,5 +49,18 @@ module.exports = env => ({
     writeToDisk: true,
     disableHostCheck: true,
     https: true
-  }
+  },
+  optimization: {
+    minimizer: [
+      new TerserPlugin({
+        terserOptions: {
+          warnings: false,
+          parse: {},
+          compress: {},
+          mangle: false, // Note `mangle.properties` is `false` by default.
+          toplevel: false
+        },
+      }),
+    ],
+  },
 });

@@ -397,17 +397,17 @@ const refresh = () => {
 
 const sendMessageToBackground = (payload: NetflixOpensubtitlesPayload) => {
   window.postMessage({
-    tag: "netflix-opensubtitles-message",
-    direction: "to-background",
-    payload: payload
+    'tag': 'netflix-opensubtitles-message',
+    'direction': "to-background",
+    'payload': payload
   } as NetflixOpensubtitlesMessage, "*")
 };
 
 window.addEventListener('message', ev => {
-  if (ev.data.tag === "netflix-opensubtitles-message" && ev.data.direction === "from-background") {
+  if (ev.data['tag'] === "netflix-opensubtitles-message" && ev.data['direction'] === "from-background") {
     const message = ev.data as NetflixOpensubtitlesMessage;
 
-    if (message.payload.type == "page-action-clicked") {
+    if (message['payload']['type'] == "page-action-clicked") {
       if (uiState.subtitleDialogOpen) {
         closeSubtitleDialog();
       } else {
