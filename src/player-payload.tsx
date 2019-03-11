@@ -5,6 +5,7 @@ import OS = require("./opensubtitles.js");
 import * as Srt from "subtitle";
 import './player-payload.css';
 import pinIcon from "./push-pin.svg";
+import { srtToTtml } from "./srt-converter";
 
 const openSubtitles = new OS(undefined, true); // use default SSL endpoint
 
@@ -167,26 +168,32 @@ const zeroPad = (length: number, n: number) => {
 }
 
 const msToTimestamp = (ms: number) => {
-  const millis = ms % 1000;
-  ms = Math.floor(ms / 1000);
-  const seconds = ms % 60;
-  ms = Math.floor(ms / 60);
-  const minutes = ms % 60;
-  const hours = Math.floor(ms / 60);
-
-  return zeroPad(2, hours) + ':' + zeroPad(2, minutes) + ':' + zeroPad(2, seconds) + '.' + zeroPad(3, millis);
+  return Math.round(ms * 1e4) + 't';
 }
 
 const srtToDfxp = (srt: Srt.subTitleType[]) => {
-  let dfxpString = `<?xml version="1.0" encoding="UTF-8"?>
-<tt xml:lang='en' xmlns='http://www.w3.org/2006/10/ttaf1' xmlns:tts='http://www.w3.org/2006/10/ttaf1#style'>
-<head></head>
+  let dfxpString = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<tt xmlns:tt="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" xmlns:tts="http://www.w3.org/ns/ttml#styling" ttp:tickRate="10000000" ttp:timeBase="media" xmlns="http://www.w3.org/ns/ttml">
+<head>
+<ttp:profile use="http://netflix.com/ttml/profile/dfxp-ls-sdh"/>
+<styling>
+<style tts:backgroundColor="transparent" tts:textAlign="center" xml:id="style0"/>
+</styling>
+<layout>
+<region tts:displayAlign="after" xml:id="region0"/>
+<region tts:displayAlign="before" xml:id="region1"/>
+</layout>
+</head>
 <body>
-<div xml:id="captions">`;
+<div xml:space="preserve">`;
 
-    for (const subtitle of srt) {
+    for (let subtitleIndex = 0; subtitleIndex < srt.length; subtitleIndex++) {
+      const subtitle = srt[subtitleIndex];
+      if (!subtitle.text) {
+        continue;
+      }
       dfxpString += `
-<p begin="${msToTimestamp(subtitle.start as number)}" end="${msToTimestamp(subtitle.end as number)}">${subtitle.text.replace('\n', '<br/>')}</p>`;
+<p begin="${msToTimestamp(subtitle.start as number)}" end="${msToTimestamp(subtitle.end as number)}" region="region0" style="style0" tts:extent="80.00% 80.00%" tts:origin="10.00% 10.00%" xml:id="subtitle${subtitleIndex}">${srtToTtml(subtitle.text)}</p>`;
     }
 
     dfxpString += `
@@ -347,20 +354,14 @@ const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (prop
   } else {
     return <div>
         <div className="netflix-opensubtitles-step">
-          <h2>Step 2: adjust timing (optional)</h2>
-          <div>
-            <input id="netflix-opensubtitles-timing-adjuster" value={state.result.resyncOffset} type="number" min="0" step="0.1" onChange={resyncChanged} /> seconds
-          </div>
+          <strong>Step 2: adjust timing (optional): </strong>
+          <input id="netflix-opensubtitles-timing-adjuster" value={state.result.resyncOffset} type="number" min="0" step="0.1" onChange={resyncChanged} /> seconds
         </div>
         <div className="netflix-opensubtitles-step">
-          <h2>Step 3: download</h2>
-          <div>
-            <a href={state.result.url} download={state.result.filename} className="netflix-opensubtitles-button">Download</a>
-          </div>
+          <strong>Step 3: </strong> <a href={state.result.url} download={state.result.filename} className="netflix-opensubtitles-button">Download</a>
         </div>
-        <h2>Step 4: load the subtitles into Netflix</h2>
-        <div>
-          <a href="#" onClick={activateClicked} className="netflix-opensubtitles-button">Activate</a>
+        <div className="netflix-opensubtitles-step">
+          <strong>Step 4: </strong><a href="#" onClick={activateClicked} className="netflix-opensubtitles-button">Activate</a>
         </div>
       </div>;
   }
@@ -485,4 +486,4 @@ const checkPlaying = () => {
   refresh();
 };
 
-setInterval(checkPlaying, 500);
+setInterval(checkPlaying, 250);

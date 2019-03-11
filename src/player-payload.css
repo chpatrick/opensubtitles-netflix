@@ -53,6 +53,7 @@ td.netflix-opensubtitles-subtitle-row:hover {
   border: 1px solid white;
   padding: 0.5em;
   text-align: right;
+  display: inline-block;
 }
 
 #netflix-opensubtitles-buttons {
@@ -67,7 +68,10 @@ td.netflix-opensubtitles-subtitle-row:hover {
   border: 1px solid white;
   padding: 0.5em;
   display: inline-block;
-  margin-left: 1em;
+}
+
+#netflix-opensubtitles-buttons .netflix-opensubtitles-button {
+  margin-left: 0.5em;
 }
 
 .netflix-opensubtitles-button:hover {
@@ -76,7 +80,7 @@ td.netflix-opensubtitles-subtitle-row:hover {
 
 .netflix-opensubtitles-step {
   border-bottom: 1px solid #222;
-  padding-bottom: 1em;
+  padding: 1em 0;
 }
 
 #opensubtitles-about-dialog {
