@@ -7,7 +7,7 @@ const pjson = require('../package.json')
 const url = 'http://api.opensubtitles.org:80/xml-rpc'
 const url_ssl = 'https://api.opensubtitles.org:443/xml-rpc'
 
-module.exports = class OS {
+module.exports.OS = class OS {
     constructor(endpoint, ssl) {
         const UA = pjson.name + ' v' + pjson.version
         const uri = endpoint || (ssl ? url_ssl : url)

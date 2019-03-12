@@ -1,13 +1,13 @@
 import * as $ from "jquery";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import OS = require("./opensubtitles.js");
+import * as OS from "./opensubtitles";
 import * as Srt from "subtitle";
 import './player-payload.css';
 import pinIcon from "./push-pin.svg";
 import { srtToTtml } from "./srt-converter";
 
-const openSubtitles = new OS(undefined, true); // use default SSL endpoint
+const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
 
 const container = $('<div></div>');
 $('body').append(container);
@@ -35,6 +35,7 @@ interface SubMetadata {
   ISO639: string;
   LanguageName: string;
   IDSubtitle: string;
+  SubTranslator: string;
 }
 
 interface ConvertedSub {
@@ -65,22 +66,13 @@ const uiState: UiState = {
   convertedSub: { state: "idle" }
 };
 
-let opensubtitlesToken: Promise<string> | null;
+let opensubtitlesTokenPromise: Promise<string> | null;
 
-const getToken = () => {
-  if (opensubtitlesToken) {
-    return opensubtitlesToken;
-  } else {
-    opensubtitlesToken = openSubtitles.LogIn('', '', 'en', OS_USER_AGENT).then(result => result.token)
-    return opensubtitlesToken;
-  }
-}
-
-const loadSubtitles = (content: VideoInfo) => {
+const loadSubtitles = async (content: VideoInfo) => {
   uiState.subtitles = { state: "downloading" };
   refresh();
 
-  const query: any = {};
+  const query: import("./opensubtitles").Query = {};
   if (content.type === "film") {
     query.query = content.title;
   } else {
@@ -89,10 +81,15 @@ const loadSubtitles = (content: VideoInfo) => {
     query.episode = content.info.episode + '';
   }
 
-  getToken().then(token => openSubtitles.SearchSubtitles(token, [ query ]))
-  .then(results => {
-    const subs = results.data as SubMetadata[];
+  if (!opensubtitlesTokenPromise) {
+    opensubtitlesTokenPromise = openSubtitles.LogIn('', '', 'en', OS_USER_AGENT).then(result => result.token);
+  };
 
+  const token = await opensubtitlesTokenPromise;
+  try {
+    const results = await openSubtitles.SearchSubtitles(token, [ query ]);
+
+    const subs = results.data.filter(sub => sub.SubFormat === 'srt');
 
     uiState.subtitles = { state: "done", result: {
       subtitles: subs
@@ -106,10 +103,10 @@ const loadSubtitles = (content: VideoInfo) => {
     if (pinnedSubs.length == 1) {
       downloadSub(pinnedSubs[0]);
     }
-  }, reason => {
+  } catch (error) {
     uiState.subtitles = { state: "failed" };
     refresh();
-  });
+  }
 }
 
 const openSubtitleDialog = () => {
@@ -204,34 +201,30 @@ const srtToDfxp = (srt: Srt.subTitleType[]) => {
   return URL.createObjectURL(new Blob([dfxpString], {type: 'application/ttml+xml'}));
 }
 
-const downloadSub = (opensubtitle: SubMetadata) => {
+const downloadSub = async (opensubtitle: SubMetadata) => {
   uiState.convertedSub = { state: "downloading" };
   refresh();
 
   const utf8Url = opensubtitle.SubDownloadLink.replace('.gz', '').replace('download/', 'download/subencoding-utf8/');
 
-  $.get({
-    url: utf8Url,
-    dataType: 'text'
-  }).then(srt => {
-    const sub = Srt.parse(srt);
+  const srt = await $.get({ url: utf8Url, dataType: 'text' })
+  const sub = Srt.parse(srt);
 
-    const content = uiState.playingContent!;
+  const content = uiState.playingContent!;
 
-    let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
+  let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
 
-    uiState.convertedSub = {
-      state: "done",
-      result: {
-        baseSub: opensubtitle,
-        baseSrt: sub,
-        url: srtToDfxp(sub),
-        filename: `${contentName} - ${opensubtitle.LanguageName}.dfxp`,
-        resyncOffset: 0
-      }
+  uiState.convertedSub = {
+    state: "done",
+    result: {
+      baseSub: opensubtitle,
+      baseSrt: sub,
+      url: srtToDfxp(sub),
+      filename: `${contentName} - ${opensubtitle.LanguageName}.dfxp`,
+      resyncOffset: 0
     }
-    refresh();
-  });
+  }
+  refresh();
 }
 
 const resyncChanged = (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -329,6 +322,7 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
           <td className={className} onClick={() => clickPin(sub.ISO639, isPinned(sub))} title={pinTitle}></td>
           <td>{sub.LanguageName}</td>
           <td onClick={() => downloadSub(sub)} className={isActive ? "netflix-opensubtitles-subtitle-row-chosen netflix-opensubtitles-subtitle-row" : "netflix-opensubtitles-subtitle-row"}>{sub.SubFileName}</td>
+          <td>{sub.SubTranslator}</td>
         </tr>
     });
 
