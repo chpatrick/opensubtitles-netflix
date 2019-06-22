@@ -215,21 +215,31 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
   const utf8Url = opensubtitle.SubDownloadLink.replace('.gz', '').replace('download/', 'download/subencoding-utf8/');
 
   const srt = await $.get({ url: utf8Url, dataType: 'text' })
-  const sub = Srt.parse(srt);
 
-  const content = uiState.playingContent!;
+  let sub: Srt.subTitleType[] | null;
+  try {
+    sub = Srt.parse(srt);
+  } catch {
+    sub = null;
+  }
 
-  let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
+  if (sub) {
+    const content = uiState.playingContent!;
 
-  uiState.convertedSub = {
-    state: "done",
-    result: {
-      baseSub: opensubtitle,
-      baseSrt: sub,
-      url: srtToDfxp(sub),
-      filename: `${contentName} - ${opensubtitle.LanguageName}.dfxp`,
-      resyncOffset: 0
+    let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
+
+    uiState.convertedSub = {
+      state: "done",
+      result: {
+        baseSub: opensubtitle,
+        baseSrt: sub,
+        url: srtToDfxp(sub),
+        filename: `${contentName} - ${opensubtitle.LanguageName}.dfxp`,
+        resyncOffset: 0
+      }
     }
+  } else {
+    uiState.convertedSub = { state: "failed" }
   }
   refresh();
 }
@@ -311,9 +321,9 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
   if (state.state === "idle") {
     return <div></div>;
   } else if (state.state === "downloading") {
-    return <div>Downloading subtitle list...</div>;
+    return <div className="netflix-opensubtitles-step">Downloading subtitle list...</div>;
   } else if (state.state === "failed") {
-    return <div>Failed to fetch subtitles :(</div>;
+    return <div className="netflix-opensubtitles-step">Failed to fetch subtitles :(</div>;
   } else {
     const isPinned = (sub: SubMetadata) => pinnedLanguages.has(sub.ISO639);
 
@@ -349,9 +359,9 @@ const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (prop
   if (state.state === "idle") {
     return null;
   } else if (state.state === "downloading") {
-    return <div>Downloading subtitle...</div>;
+    return <div className="netflix-opensubtitles-step">Downloading subtitle...</div>;
   } else if (state.state === "failed") {
-    return <div>Download failed :(</div>;
+    return <div className="netflix-opensubtitles-step">Download failed :( Maybe the subtitle is corrupt?</div>;
   } else {
     return <div>
         <div className="netflix-opensubtitles-step">
