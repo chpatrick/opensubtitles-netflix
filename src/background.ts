@@ -1,3 +1,5 @@
+import "./analytics.js";
+
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message['tag'] === "netflix-opensubtitles-message") {
     const extMessage = message['payload'] as NetflixOpensubtitlesPayload;
@@ -17,3 +19,4 @@ chrome.pageAction.onClicked.addListener(tab => {
     'payload': { type: "page-action-clicked" }
   } as NetflixOpensubtitlesMessage)
 });
+

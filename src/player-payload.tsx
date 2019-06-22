@@ -36,6 +36,7 @@ interface SubMetadata {
   LanguageName: string;
   IDSubtitle: string;
   SubTranslator: string;
+  SubFormat: string;
 }
 
 interface ConvertedSub {
@@ -58,6 +59,12 @@ interface UiState {
   convertedSub: DownloadState<ConvertedSub>;
 }
 
+interface Query {
+  query?: string;
+  season?: string;
+  episode?: string;
+}
+
 const uiState: UiState = {
   playingContent: null,
   aboutDialogOpen: false,
@@ -72,7 +79,7 @@ const loadSubtitles = async (content: VideoInfo) => {
   uiState.subtitles = { state: "downloading" };
   refresh();
 
-  const query: import("./opensubtitles").Query = {};
+  const query: Query = {};
   if (content.type === "film") {
     query.query = content.title;
   } else {
@@ -87,7 +94,7 @@ const loadSubtitles = async (content: VideoInfo) => {
 
   const token = await opensubtitlesTokenPromise;
   try {
-    const results = await openSubtitles.SearchSubtitles(token, [ query ]);
+    const results: { data: SubMetadata[] } = await openSubtitles.SearchSubtitles(token, [ query ]);
 
     const subs = results.data.filter(sub => sub.SubFormat === 'srt');
 
@@ -365,6 +372,7 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) =>
   <div>
     <div id="opensubtitles-dialog" style={{visibility: props.state.subtitleDialogOpen ? "visible" : "hidden"}}>
       <div id="netflix-opensubtitles-buttons">
+        <a className="netflix-opensubtitles-button" href="https://ko-fi.com/R6R0XQSG" target="_blank">Buy me a coffee</a>
         <a className="netflix-opensubtitles-button" href="#" onClick={openAbout}>?</a>
         <a className="netflix-opensubtitles-button" href="#" onClick={closeSubtitleDialog}>⨯</a>
       </div>
