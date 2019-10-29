@@ -1,3 +1,5 @@
+import * as $ from "jquery";
+
 window.addEventListener('message', ev => {
   if (ev.data['tag'] === "netflix-opensubtitles-message" && ev.data['direction'] === "to-background") {
     chrome.runtime.sendMessage(ev.data);
@@ -10,6 +12,8 @@ chrome.runtime.onMessage.addListener(message => {
   }
 });
 
-var workerScript = document.createElement('script');
-workerScript.src = OS_PAYLOAD_SRC;
-(document.head || document.documentElement).appendChild(workerScript);
+$(() => {
+  const workerScript = document.createElement('script');
+  workerScript.src = OS_PAYLOAD_SRC;
+  (document.head || document.body).appendChild(workerScript);
+});

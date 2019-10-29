@@ -1,5 +1,6 @@
 const path = require('path');
 const webpack = require('webpack');
+const process = require('process');
 const CopyWebpackPlugin = require('copy-webpack-plugin')
 const TerserPlugin = require('terser-webpack-plugin');
 
@@ -40,7 +41,7 @@ module.exports = env => ({
   },
   plugins: [
     new webpack.DefinePlugin({
-      'OS_USER_AGENT': JSON.stringify((env && env.userAgent) || 'TemporaryUserAgent'),
+      'OS_USER_AGENT': JSON.stringify(process.env['OS_USER_AGENT'] || 'TemporaryUserAgent'),
       'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.extension.getURL('player-payload.js')"
     }),
     new CopyWebpackPlugin([

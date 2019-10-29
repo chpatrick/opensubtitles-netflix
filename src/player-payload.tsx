@@ -9,8 +9,7 @@ import { srtToTtml } from "./srt-converter";
 
 const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
 
-const container = $('<div></div>');
-$('body').append(container);
+let container: HTMLDivElement;
 
 interface EpisodeInfo {
   seriesTitle: string;
@@ -117,9 +116,13 @@ const loadSubtitles = async (content: VideoInfo) => {
 }
 
 const openSubtitleDialog = () => {
+  if (uiState.playingContent === null) {
+    return;
+  }
+
   uiState.subtitleDialogOpen = true;
   if (uiState.subtitles.state !== "done") {
-    loadSubtitles(uiState.playingContent!);
+    loadSubtitles(uiState.playingContent);
   }
   refresh();
 }
@@ -127,6 +130,14 @@ const openSubtitleDialog = () => {
 const closeSubtitleDialog = () => {
   uiState.subtitleDialogOpen = false;
   refresh();
+}
+
+const toggleSubtitleDialog = () => {
+  if (uiState.subtitleDialogOpen) {
+    closeSubtitleDialog();
+  } else {
+    openSubtitleDialog();
+  }
 }
 
 const openAbout = () => {
@@ -366,7 +377,7 @@ const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (prop
     return <div>
         <div className="netflix-opensubtitles-step">
           <strong>Step 2: adjust timing (optional): </strong>
-          <input id="netflix-opensubtitles-timing-adjuster" value={state.result.resyncOffset} type="number" min="0" step="0.1" onChange={resyncChanged} /> seconds
+          <input id="netflix-opensubtitles-timing-adjuster" value={state.result.resyncOffset} type="number" step="0.1" onChange={resyncChanged} /> seconds
         </div>
         <div className="netflix-opensubtitles-step">
           <strong>Step 3: </strong> <a href={state.result.url} download={state.result.filename} className="netflix-opensubtitles-button">Download</a>
@@ -415,10 +426,7 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) =>
   </div>;
 
 const refresh = () => {
-  ReactDOM.render(
-    <MainComponent state={uiState} />,
-    container.get(0)
-  );
+  ReactDOM.render(<MainComponent state={uiState} />, container);
 }
 
 const sendMessageToBackground = (payload: NetflixOpensubtitlesPayload) => {
@@ -434,20 +442,10 @@ window.addEventListener('message', ev => {
     const message = ev.data as NetflixOpensubtitlesMessage;
 
     if (message['payload']['type'] == "page-action-clicked") {
-      if (uiState.subtitleDialogOpen) {
-        closeSubtitleDialog();
-      } else {
-        openSubtitleDialog();
-      }
+      toggleSubtitleDialog();
     }
   }
 });
-
-$(document.body).on('keydown', ev => {
-  if (ev.key.toLowerCase() === "d") {
-    openSubtitleDialog();
-  }
-})
 
 const checkPlaying = () => {
   let newPlayingEpisode: VideoInfo | null = null;
@@ -498,4 +496,16 @@ const checkPlaying = () => {
   refresh();
 };
 
-setInterval(checkPlaying, 250);
+$(() => {
+  container = document.createElement('div');
+
+  $(document.body)
+    .append(container)
+    .on('keydown', ev => {
+      if (ev.key.toLowerCase() === "d") {
+        toggleSubtitleDialog();
+      }
+    });
+
+  setInterval(checkPlaying, 250);
+});

@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "develop": "webpack-dev-server --mode development --env.sourceMap true --env.devServer true",
+    "build": "rm -fv 'dist/*' opensubtitles-netflix.zip && webpack-cli --mode production && cd dist && bsdtar -avcf ../opensubtitles-netflix.zip *"
+  },
   "author": "",
   "license": "ISC",
   "devDependencies": {
