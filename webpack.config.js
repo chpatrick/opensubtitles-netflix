@@ -22,13 +22,15 @@ module.exports = env => ({
         test: /\.css$/,
         use: [
           { loader: "style-loader" },
-          { loader: "css-loader" }
+          { loader: "css-loader", options: { esModule: true } }
         ]
       },
       {
-        test: /\.svg$/,
+        test: /\.(svg|webp)$/,
         use: [
-          { loader: "url-loader" },
+          {
+            loader: "url-loader"
+          },
         ]
       }
     ]
@@ -42,7 +44,7 @@ module.exports = env => ({
   plugins: [
     new webpack.DefinePlugin({
       'OS_USER_AGENT': JSON.stringify(process.env['OS_USER_AGENT'] || 'TemporaryUserAgent'),
-      'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.extension.getURL('player-payload.js')",
+      'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.runtime.getURL('player-payload.js')",
       'OS_SENTRY_DSN': JSON.stringify(process.env['OS_SENTRY_DSN'] || null)
     }),
     new CopyWebpackPlugin([

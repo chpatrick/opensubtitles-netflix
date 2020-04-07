@@ -4,7 +4,7 @@ import * as ReactDOM from "react-dom";
 import * as OS from "./opensubtitles";
 import * as Srt from "subtitle";
 import './player-payload.css';
-import pinIcon from "./push-pin.svg";
+import opensubtitlesLogo from "./opensubtitles.webp";
 import { srtToTtml } from "./srt-converter";
 import * as Sentry from '@sentry/browser';
 import axios from 'axios';
@@ -52,12 +52,24 @@ interface Subtitles {
   subtitles: SubMetadata[];
 }
 
+interface Settings {
+  openSubtitlesCredentials: { username: string, password: string } | null;
+  enableReporting: boolean;
+  pinnedLanguages: string[];
+}
+
 interface UiState {
+  settings: Settings;
   playingContent: VideoInfo | null;
   subtitleDialogOpen: boolean;
   aboutDialogOpen: boolean;
   subtitles: DownloadState<Subtitles>;
   convertedSub: DownloadState<ConvertedSub>;
+
+  tentativeUsername: string;
+  tentativePassword: string;
+  loginState: DownloadState<{}>;
+  opensubtitlesToken: string | null;
 }
 
 interface Query {
@@ -67,14 +79,52 @@ interface Query {
 }
 
 const uiState: UiState = {
+  settings: {
+    openSubtitlesCredentials: null,
+    enableReporting: true,
+    pinnedLanguages: []
+  },
+  opensubtitlesToken: null,
   playingContent: null,
   aboutDialogOpen: false,
   subtitleDialogOpen: false,
   subtitles: { state: "idle" },
-  convertedSub: { state: "idle" }
+  convertedSub: { state: "idle" },
+  loginState: { state: "idle" },
+  tentativeUsername: '',
+  tentativePassword: ''
 };
 
-let opensubtitlesTokenPromise: Promise<string> | null;
+const settingsKey = 'netflix-opensubtitles-settings';
+const maybeSettings = localStorage.getItem(settingsKey);
+if (maybeSettings !== null) {
+  uiState.settings = JSON.parse(maybeSettings);
+  uiState.tentativeUsername = uiState.settings.openSubtitlesCredentials?.username ?? '';
+}
+
+const initSentry = () => {
+  Sentry.init({
+    dsn: OS_SENTRY_DSN!,
+    defaultIntegrations: false
+   });
+}
+
+const deinitSentry = () => {
+  Sentry.init();
+}
+
+if (OS_SENTRY_DSN !== null && uiState.settings.enableReporting) {
+  initSentry();
+}
+
+
+function saveSettings() {
+  localStorage.setItem(settingsKey, JSON.stringify(uiState.settings));
+}
+
+function getPinnedLanguages(): Set<string> {
+  return new Set<string>(uiState.settings.pinnedLanguages);
+}
 
 function reportRejection(error: any) {
   Sentry.configureScope(scope => {
@@ -108,13 +158,10 @@ const loadSubtitles = async (content: VideoInfo) => {
     query.episode = content.info.episode + '';
   }
 
-  if (!opensubtitlesTokenPromise) {
-    opensubtitlesTokenPromise = openSubtitles.LogIn('', '', 'en', OS_USER_AGENT).then(result => result.token);
-  };
 
-  const token = await opensubtitlesTokenPromise;
   try {
-    const results: { data: SubMetadata[] } = await openSubtitles.SearchSubtitles(token, [ query ]);
+    await (uiState.opensubtitlesToken !== null ? Promise.resolve() : logIn(uiState.settings.openSubtitlesCredentials));
+    const results: { data: SubMetadata[] } = await openSubtitles.SearchSubtitles(uiState.opensubtitlesToken!, [ query ]);
 
     const subs = results.data.filter(sub => sub.SubFormat === 'srt');
 
@@ -322,21 +369,6 @@ function compareBy<T>(...comparisons: Comparison<T>[]): Comparison<T> {
   }
 }
 
-const pinnedLanguagesKey = 'netflix-opensubtitles-pinned-languages';
-
-const getPinnedLanguages = (): Set<string> => {
-  const res = localStorage.getItem(pinnedLanguagesKey);
-  if (res) {
-    return new Set(JSON.parse(res));
-  } else {
-    return new Set();
-  }
-}
-
-const putPinnedLanguages = (languages: Set<string>) => {
-  localStorage.setItem(pinnedLanguagesKey, JSON.stringify(Array.from(languages)));
-}
-
 const clickPin = (language: string, isPinned: boolean) => {
   const langs = getPinnedLanguages();
   if (isPinned) {
@@ -344,14 +376,13 @@ const clickPin = (language: string, isPinned: boolean) => {
   } else {
     langs.add(language);
   }
-  putPinnedLanguages(langs);
+  uiState.settings.pinnedLanguages = Array.from(langs);
+  saveSettings();
   refresh();
 }
 
 const SubtitleTable: React.SFC<{ state: UiState }> = props => {
   const state = props.state.subtitles;
-
-  const pinnedLanguages = getPinnedLanguages();
 
   if (state.state === "idle") {
     return <div></div>;
@@ -360,6 +391,7 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
   } else if (state.state === "failed") {
     return <div className="netflix-opensubtitles-step">Failed to fetch subtitles :(</div>;
   } else {
+    const pinnedLanguages = getPinnedLanguages();
     const isPinned = (sub: SubMetadata) => pinnedLanguages.has(sub.ISO639);
 
     const sortedSubs = state.result.subtitles.slice(0).sort(compareBy(comparing(sub => isPinned(sub) ? 0 : 1), comparing(sub => sub.LanguageName), comparing(sub => sub.SubFileName.toLowerCase())));
@@ -419,7 +451,58 @@ const reportProblem = () => {
     Sentry.captureMessage(problem, Sentry.Severity.Error);
     window.alert("Thank you for your feedback!");
   }
+
+  // TODO: use this once it doesn't 404:
+  /*
+  Sentry.showReportDialog({
+    eventId: "1246",
+    title: "Something wrong?",
+    subtitle: "Please describe the problem."
+  });
+  */
 };
+
+const logIn = async (credentials: { username: string, password: string } | null) => {
+  const result = await openSubtitles.LogIn(credentials?.username ?? '', credentials?.password ?? '', 'en', OS_USER_AGENT);
+  if (!result.status.includes("200")) {
+    throw new Error("Login failed.");
+  }
+
+  uiState.opensubtitlesToken = result.token;
+}
+
+const tryNewLogIn = async () => {
+  try {
+    uiState.loginState = { state: "downloading" };
+    refresh();
+
+    await logIn({ username: uiState.tentativeUsername, password: uiState.tentativePassword });
+    uiState.settings.openSubtitlesCredentials = {
+      username: uiState.tentativeUsername,
+      password: uiState.tentativePassword
+    };
+    uiState.loginState = { state: "done", result: {} };
+    saveSettings();
+    refresh();
+
+    if (uiState.playingContent) {
+      loadSubtitles(uiState.playingContent).catch(reportRejection);
+    }
+  } catch (error) {
+    uiState.loginState = { state: "failed" };
+  }
+};
+
+const updateReporting = (allowReporting: boolean) => {
+  if (!uiState.settings.enableReporting && allowReporting) {
+    initSentry();
+  } else if (uiState.settings.enableReporting && !allowReporting) {
+    deinitSentry();
+  }
+  uiState.settings.enableReporting = allowReporting;
+  saveSettings();
+  refresh();
+}
 
 const MainComponent: React.SFC<{ state: UiState }> = (props) =>
   <div>
@@ -429,7 +512,7 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) =>
           <a className="netflix-opensubtitles-button" href="#" onClick={reportProblem}>Report a problem</a>
         }
         <a className="netflix-opensubtitles-button" href="https://ko-fi.com/R6R0XQSG" target="_blank">Buy me a coffee</a>
-        <a className="netflix-opensubtitles-button" href="#" onClick={openAbout}>About</a>
+        <a className="netflix-opensubtitles-button" href="#" onClick={openAbout}>Settings &amp; About</a>
         <a className="netflix-opensubtitles-button" href="#" onClick={closeSubtitleDialog}>⨯</a>
       </div>
 
@@ -451,10 +534,51 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) =>
         <a className="netflix-opensubtitles-button" href="#" onClick={closeAbout}>⨯</a>
       </div>
 
+      <form>
+        <label>OpenSubtitles login (optional, leave blank for anonymous user)</label>
+        <div>
+          <input
+            type="text"
+            placeholder="Username"
+            value={props.state.tentativeUsername}
+            onChange={ev => { props.state.tentativeUsername = ev.target.value; refresh(); }}
+            />
+        </div>
+        <div>
+          <input
+            type="password"
+            placeholder="Password"
+            value={props.state.tentativePassword}
+            onChange={ev => { props.state.tentativePassword = ev.target.value; refresh(); }}
+            />
+        </div>
+        <div>
+          <input type="submit" onClick={ev => { ev.preventDefault(); tryNewLogIn().catch(reportRejection); }} disabled={props.state.loginState.state === "downloading"} value="Log in" />
+          &nbsp;
+          {props.state.loginState.state === "downloading" ? <span>Logging in...</span> :
+           props.state.loginState.state === "failed" ? <span style={{ 'fontWeight': 'bold', color: 'red' }}>Login failed.</span> :
+           props.state.loginState.state === "done" ? <span style={{ 'fontWeight': 'bold', color: 'green' }}>Login successful.</span> :
+           null
+           }
+        </div>
+      </form>
+
+      {OS_SENTRY_DSN !== null &&
+        <div>
+          <hr />
+          <label>
+            <input type="checkbox" checked={uiState.settings.enableReporting} onChange={ev => { updateReporting(ev.target.checked); }} />
+            &nbsp;Automatically report errors if something goes wrong
+          </label>
+        </div>
+      }
+
+      <hr />
+
       <p>
         Subtitles service powered by
       </p>
-      <a href="http://www.opensubtitles.org/" target="_blank"><img src="https://static.opensubtitles.org/gfx/logo-transparent.png" /></a>
+      <a href="http://www.opensubtitles.org/" target="_blank"><img id="netflix-opensubtitles-os-logo" src={opensubtitlesLogo} /></a>
       <div className="netflix-opensubtitles-about-section">Icons made by <a href="https://www.flaticon.com/authors/smashicons" title="Smashicons" target="_blank">Smashicons</a> from <a href="https://www.flaticon.com/" title="Flaticon" target="_blank">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div>
       <div className="netflix-opensubtitles-about-section">Report bugs and contribute on <a href="https://github.com/chpatrick/opensubtitles-netflix" target="_blank">GitHub</a></div>
     </div>
@@ -530,13 +654,6 @@ const checkPlaying = () => {
   uiState.playingContent = newPlayingEpisode;
   refresh();
 };
-
-if (OS_SENTRY_DSN) {
-  Sentry.init({
-    dsn: OS_SENTRY_DSN,
-    defaultIntegrations: false
-   });
-}
 
 $(() => {
   container = document.createElement('div');

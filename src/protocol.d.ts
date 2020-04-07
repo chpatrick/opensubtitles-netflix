@@ -15,8 +15,13 @@ declare module "*.css" {
 }
 
 declare module "*.svg" {
-  const content: string;
-  export default content;
+  const path: string;
+  export default path;
+}
+
+declare module "*.webp" {
+  const path: string;
+  export default path;
 }
 
 // User agent passed in from configuration.

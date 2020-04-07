@@ -41,7 +41,7 @@ export function srtToTtml(srt: string) {
 
   let ttml = '';
 
-  const parser = new htmlparser.Parser({
+  const parser = new htmlparser.Parser(<any>{
     onopentag: function(name: string, attribs: { [attrib: string] : string }){
       switch(name) {
         case 'i':

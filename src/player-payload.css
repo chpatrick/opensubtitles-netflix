@@ -9,14 +9,18 @@
   background-color: black;
   color: white;
   font-size: 10pt;
-  background-color: #060606;
+  background: linear-gradient(#272727, #0a0a0a);
 }
 
 #netflix-opensubtitles-subtitle-table {
   display: block;
   overflow-y: scroll;
   height: 40vh;
-  background: linear-gradient(to bottom, #080808 0%,#111 50%,#080808 100%);
+  background: linear-gradient(#191919, #000000);
+}
+
+#netflix-opensubtitles-os-logo {
+  height: 5em;
 }
 
 #netflix-opensubtitles-subtitle-table td {
@@ -85,25 +89,28 @@ td.netflix-opensubtitles-subtitle-row:hover {
 
 #opensubtitles-about-dialog {
   z-index: 10001;
-  background: linear-gradient(to bottom, #eee 0%,#b7b7b7 100%) !important;
-  color: black;
+  background: linear-gradient(#272727, #0a0a0a);
+  color: white;
   font-size: 10pt;
   background-color: #060606;
 
   width: 40em;
-  height: 11.2em;
+  height: 24em;
   padding: 1em;
 
   position: absolute;
   top: 50%;
   left: 50%;
 
-  margin: -5.6em 0 0 -20em;
+  margin: -12em 0 0 -20em;
 }
 
-#opensubtitles-about-dialog .netflix-opensubtitles-button {
-  border: 1px solid black;
-  color: black;
+#opensubtitles-about-dialog input {
+  background: black;
+  color: white;
+  border-width: 0px;
+  padding: 0.3em;
+  margin: 0.3em 0 0.3em 0;
 }
 
 .netflix-opensubtitles-about-section {
