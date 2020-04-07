@@ -6,6 +6,8 @@ import * as Srt from "subtitle";
 import './player-payload.css';
 import pinIcon from "./push-pin.svg";
 import { srtToTtml } from "./srt-converter";
+import * as Sentry from '@sentry/browser';
+import axios from 'axios';
 
 const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
 
@@ -74,7 +76,26 @@ const uiState: UiState = {
 
 let opensubtitlesTokenPromise: Promise<string> | null;
 
+function reportRejection(error: any) {
+  Sentry.configureScope(scope => {
+    if (error?.config?.url) {
+      scope.setExtra("request-url", error.config.url);
+    }
+    if (error?.config?.method) {
+      scope.setExtra("request-method", error.config.method);
+    }
+    Sentry.captureException(error);
+  })
+}
+
 const loadSubtitles = async (content: VideoInfo) => {
+  Sentry.addBreadcrumb({
+    message: 'load-subtitles',
+    data: {
+      'content': JSON.stringify(content)
+    }
+  });
+
   uiState.subtitles = { state: "downloading" };
   refresh();
 
@@ -107,11 +128,12 @@ const loadSubtitles = async (content: VideoInfo) => {
     const pinnedSubs = subs.filter((sub: SubMetadata) => pinnedLanguages.has(sub.ISO639));
     // If there's exactly one pinned sub, download it immediately.
     if (pinnedSubs.length == 1) {
-      downloadSub(pinnedSubs[0]);
+      downloadSub(pinnedSubs[0]).catch(reportRejection);
     }
   } catch (error) {
     uiState.subtitles = { state: "failed" };
     refresh();
+    throw error;
   }
 }
 
@@ -122,7 +144,7 @@ const openSubtitleDialog = () => {
 
   uiState.subtitleDialogOpen = true;
   if (uiState.subtitles.state !== "done") {
-    loadSubtitles(uiState.playingContent);
+    loadSubtitles(uiState.playingContent).catch(reportRejection);
   }
   refresh();
 }
@@ -220,23 +242,23 @@ const srtToDfxp = (srt: Srt.subTitleType[]) => {
 }
 
 const downloadSub = async (opensubtitle: SubMetadata) => {
+  Sentry.addBreadcrumb({
+    message: 'download-sub',
+    data: {
+      'subtitle': JSON.stringify(opensubtitle)
+    }
+  });
+
   uiState.convertedSub = { state: "downloading" };
   refresh();
 
   const utf8Url = opensubtitle.SubDownloadLink.replace('.gz', '').replace('download/', 'download/subencoding-utf8/');
+  const srtResponse = await axios.get(utf8Url, { responseType: 'text' });
 
-  const srt = await $.get({ url: utf8Url, dataType: 'text' })
-
-  let sub: Srt.subTitleType[] | null;
   try {
-    sub = Srt.parse(srt);
-  } catch {
-    sub = null;
-  }
+    const sub = Srt.parse(srtResponse.data);
 
-  if (sub) {
     const content = uiState.playingContent!;
-
     let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
 
     uiState.convertedSub = {
@@ -249,10 +271,12 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
         resyncOffset: 0
       }
     }
-  } else {
+    refresh();
+  } catch(error) {
     uiState.convertedSub = { state: "failed" }
+    refresh();
+    throw error;
   }
-  refresh();
 }
 
 const resyncChanged = (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -300,7 +324,7 @@ function compareBy<T>(...comparisons: Comparison<T>[]): Comparison<T> {
 
 const pinnedLanguagesKey = 'netflix-opensubtitles-pinned-languages';
 
-const getPinnedLanguages = () => {
+const getPinnedLanguages = (): Set<string> => {
   const res = localStorage.getItem(pinnedLanguagesKey);
   if (res) {
     return new Set(JSON.parse(res));
@@ -349,7 +373,7 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
       return <tr key={sub.IDSubtitle}>
           <td className={className} onClick={() => clickPin(sub.ISO639, isPinned(sub))} title={pinTitle}></td>
           <td>{sub.LanguageName}</td>
-          <td onClick={() => downloadSub(sub)} className={isActive ? "netflix-opensubtitles-subtitle-row-chosen netflix-opensubtitles-subtitle-row" : "netflix-opensubtitles-subtitle-row"}>{sub.SubFileName}</td>
+          <td onClick={() => downloadSub(sub).catch(reportRejection)} className={isActive ? "netflix-opensubtitles-subtitle-row-chosen netflix-opensubtitles-subtitle-row" : "netflix-opensubtitles-subtitle-row"}>{sub.SubFileName}</td>
           <td>{sub.SubTranslator}</td>
         </tr>
     });
@@ -389,12 +413,23 @@ const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (prop
   }
 }
 
+const reportProblem = () => {
+  const problem = window.prompt("Please describe the problem:");
+  if (problem !== null) {
+    Sentry.captureMessage(problem, Sentry.Severity.Error);
+    window.alert("Thank you for your feedback!");
+  }
+};
+
 const MainComponent: React.SFC<{ state: UiState }> = (props) =>
   <div>
     <div id="opensubtitles-dialog" style={{visibility: props.state.subtitleDialogOpen ? "visible" : "hidden"}}>
       <div id="netflix-opensubtitles-buttons">
+        {OS_SENTRY_DSN !== null &&
+          <a className="netflix-opensubtitles-button" href="#" onClick={reportProblem}>Report a problem</a>
+        }
         <a className="netflix-opensubtitles-button" href="https://ko-fi.com/R6R0XQSG" target="_blank">Buy me a coffee</a>
-        <a className="netflix-opensubtitles-button" href="#" onClick={openAbout}>?</a>
+        <a className="netflix-opensubtitles-button" href="#" onClick={openAbout}>About</a>
         <a className="netflix-opensubtitles-button" href="#" onClick={closeSubtitleDialog}>⨯</a>
       </div>
 
@@ -495,6 +530,13 @@ const checkPlaying = () => {
   uiState.playingContent = newPlayingEpisode;
   refresh();
 };
+
+if (OS_SENTRY_DSN) {
+  Sentry.init({
+    dsn: OS_SENTRY_DSN,
+    defaultIntegrations: false
+   });
+}
 
 $(() => {
   container = document.createElement('div');

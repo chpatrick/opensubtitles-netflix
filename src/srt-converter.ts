@@ -42,7 +42,7 @@ export function srtToTtml(srt: string) {
   let ttml = '';
 
   const parser = new htmlparser.Parser({
-    onopentag: function(name, attribs){
+    onopentag: function(name: string, attribs: { [attrib: string] : string }){
       switch(name) {
         case 'i':
           currentStyle.italic++;
@@ -129,7 +129,7 @@ export function srtToTtml(srt: string) {
           break;
       }
     },
-    onclosetag: function(name){
+    onclosetag: function(name: string){
       switch(name) {
         case 'i':
           currentStyle.italic = Math.max(currentStyle.italic - 1, 0);
@@ -153,7 +153,7 @@ export function srtToTtml(srt: string) {
           break;
       }
     },
-    ontext: function(text){
+    ontext: function(text: string){
       let computedColor: string | null = null;
       if (assOverride.color) {
         computedColor = assOverride.color;

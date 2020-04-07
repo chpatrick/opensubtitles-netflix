@@ -42,7 +42,8 @@ module.exports = env => ({
   plugins: [
     new webpack.DefinePlugin({
       'OS_USER_AGENT': JSON.stringify(process.env['OS_USER_AGENT'] || 'TemporaryUserAgent'),
-      'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.extension.getURL('player-payload.js')"
+      'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.extension.getURL('player-payload.js')",
+      'OS_SENTRY_DSN': JSON.stringify(process.env['OS_SENTRY_DSN'] || null)
     }),
     new CopyWebpackPlugin([
       'src/manifest.json',
@@ -54,7 +55,10 @@ module.exports = env => ({
   devServer: {
     writeToDisk: true,
     disableHostCheck: true,
-    https: true
+    https: true,
+    headers: {
+      "Access-Control-Allow-Origin": "https://www.netflix.com",
+    }
   },
   optimization: {
     minimizer: [
