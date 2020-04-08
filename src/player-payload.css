@@ -5,7 +5,7 @@
   bottom: 5vh;
   left: 20vw;
   right: 20em;
-  z-index: 10000;
+  z-index: 900;
   background-color: black;
   color: white;
   font-size: 10pt;
@@ -88,7 +88,7 @@ td.netflix-opensubtitles-subtitle-row:hover {
 }
 
 #opensubtitles-about-dialog {
-  z-index: 10001;
+  z-index: 901;
   background: linear-gradient(#272727, #0a0a0a);
   color: white;
   font-size: 10pt;

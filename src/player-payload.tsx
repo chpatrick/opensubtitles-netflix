@@ -7,6 +7,7 @@ import './player-payload.css';
 import opensubtitlesLogo from "./opensubtitles.webp";
 import { srtToTtml } from "./srt-converter";
 import * as Sentry from '@sentry/browser';
+import * as SentryIntegrations from '@sentry/integrations';
 import axios from 'axios';
 
 const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
@@ -105,7 +106,11 @@ if (maybeSettings !== null) {
 const initSentry = () => {
   Sentry.init({
     dsn: OS_SENTRY_DSN!,
-    defaultIntegrations: false
+    defaultIntegrations: false,
+    integrations: [
+      new Sentry.Integrations.UserAgent(),
+      new SentryIntegrations.ExtraErrorData(),
+    ]
    });
 }
 
@@ -300,9 +305,9 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
   refresh();
 
   const utf8Url = opensubtitle.SubDownloadLink.replace('.gz', '').replace('download/', 'download/subencoding-utf8/');
-  const srtResponse = await axios.get(utf8Url, { responseType: 'text' });
 
   try {
+    const srtResponse = await axios.get(utf8Url, { responseType: 'text' });
     const sub = Srt.parse(srtResponse.data);
 
     const content = uiState.playingContent!;
@@ -446,26 +451,29 @@ const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (prop
 }
 
 const reportProblem = () => {
-  const problem = window.prompt("Please describe the problem:");
-  if (problem !== null) {
-    Sentry.captureMessage(problem, Sentry.Severity.Error);
-    window.alert("Thank you for your feedback!");
+  const eventId = Sentry.captureMessage("User feedback");
+  Sentry.showReportDialog({
+    eventId,
+    title: "Something wrong?",
+    subtitle: ""
+  });
+};
+
+class LoginError extends Error {
+  constructor(anonymous: boolean, result: OS.LogInResult) {
+    super("Login failed.");
+    this.anonymous = anonymous;
+    this.result = result;
   }
 
-  // TODO: use this once it doesn't 404:
-  /*
-  Sentry.showReportDialog({
-    eventId: "1246",
-    title: "Something wrong?",
-    subtitle: "Please describe the problem."
-  });
-  */
-};
+  anonymous: boolean;
+  result: OS.LogInResult;
+}
 
 const logIn = async (credentials: { username: string, password: string } | null) => {
   const result = await openSubtitles.LogIn(credentials?.username ?? '', credentials?.password ?? '', 'en', OS_USER_AGENT);
   if (!result.status.includes("200")) {
-    throw new Error("Login failed.");
+    throw new LoginError(credentials === null, result);
   }
 
   uiState.opensubtitlesToken = result.token;
