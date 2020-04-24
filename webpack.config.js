@@ -61,7 +61,8 @@ module.exports = env => ({
     https: true,
     headers: {
       "Access-Control-Allow-Origin": "https://www.netflix.com",
-    }
+    },
+    hot: true
   },
   optimization: {
     minimizer: [

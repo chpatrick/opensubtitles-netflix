@@ -195,7 +195,7 @@ const openSubtitleDialog = () => {
   }
 
   uiState.subtitleDialogOpen = true;
-  if (uiState.subtitles.state !== "done") {
+  if (uiState.subtitles.state !== "done" && uiState.settings.openSubtitlesCredentials !== null) {
     loadSubtitles(uiState.playingContent).catch(reportRejection);
   }
   refresh();
@@ -485,10 +485,14 @@ const tryNewLogIn = async () => {
     refresh();
 
     await logIn({ username: uiState.tentativeUsername, password: uiState.tentativePassword });
-    uiState.settings.openSubtitlesCredentials = {
-      username: uiState.tentativeUsername,
-      password: uiState.tentativePassword
-    };
+    if (uiState.tentativeUsername.trim() === '' && uiState.tentativePassword.trim() === '') {
+      uiState.settings.openSubtitlesCredentials = null;
+    } else {
+      uiState.settings.openSubtitlesCredentials = {
+        username: uiState.tentativeUsername,
+        password: uiState.tentativePassword
+      };
+    }
     uiState.loginState = { state: "done", result: {} };
     saveSettings();
     refresh();
@@ -512,8 +516,42 @@ const updateReporting = (allowReporting: boolean) => {
   refresh();
 }
 
-const MainComponent: React.SFC<{ state: UiState }> = (props) =>
-  <div>
+const MainComponent: React.SFC<{ state: UiState }> = (props) => {
+  let downloadArea: JSX.Element;
+
+  if (props.state.settings.openSubtitlesCredentials !== null) {
+    downloadArea =
+      <div>
+        <div>
+          <div>
+            <h1>Download subtitles</h1>
+            <h2>Step 1: select your preferred subtitles</h2>
+          </div>
+          <SubtitleTable state={props.state} />
+        </div>
+
+        <div>
+          <FinishComponent state={props.state.convertedSub} />
+        </div>
+      </div>
+  } else {
+    downloadArea =
+      <div className="opensubtitles-login-message">
+        <h3>UPDATE</h3>
+        <p>
+        As of April 24 2020, OpenSubtitles <a href="https://forum.opensubtitles.org/viewtopic.php?f=11&amp;t=17110" target="_blank">requires</a> users to sign in to use their service. 😔
+        </p>
+        <p>
+        Please follow these steps to keep using this extension:
+        </p>
+        <ol>
+          <li><a href="https://www.opensubtitles.org/newuser" target="_blank">Register</a> on OpenSubtitles (if you don't already have an account)</li>
+          <li><a href="#" onClick={openAbout}>Log in</a> in this extension</li>
+        </ol>
+      </div>;
+  }
+
+  return <div>
     <div id="opensubtitles-dialog" style={{visibility: props.state.subtitleDialogOpen ? "visible" : "hidden"}}>
       <div id="netflix-opensubtitles-buttons">
         {OS_SENTRY_DSN !== null &&
@@ -524,17 +562,8 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) =>
         <a className="netflix-opensubtitles-button" href="#" onClick={closeSubtitleDialog}>⨯</a>
       </div>
 
-      <div>
-        <div>
-          <h1>Download subtitles</h1>
-          <h2>Step 1: select your preferred subtitles</h2>
-        </div>
-        <SubtitleTable state={props.state} />
-      </div>
+      { downloadArea }
 
-      <div>
-        <FinishComponent state={props.state.convertedSub} />
-      </div>
     </div>
 
     <div id="opensubtitles-about-dialog" style={{visibility: props.state.aboutDialogOpen ? "visible" : "hidden"}}>
@@ -590,7 +619,8 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) =>
       <div className="netflix-opensubtitles-about-section">Icons made by <a href="https://www.flaticon.com/authors/smashicons" title="Smashicons" target="_blank">Smashicons</a> from <a href="https://www.flaticon.com/" title="Flaticon" target="_blank">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div>
       <div className="netflix-opensubtitles-about-section">Report bugs and contribute on <a href="https://github.com/chpatrick/opensubtitles-netflix" target="_blank">GitHub</a></div>
     </div>
-  </div>;
+  </div>
+};
 
 const refresh = () => {
   ReactDOM.render(<MainComponent state={uiState} />, container);

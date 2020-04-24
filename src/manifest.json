@@ -1,6 +1,6 @@
   {
     "name": "OpenSubtitles for Netflix",
-    "version": "1.15",
+    "version": "1.16",
     "description": "Load OpenSubtitles subtitles on Netflix",
     "background": {
       "scripts": ["background.js"],

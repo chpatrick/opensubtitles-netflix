@@ -12,6 +12,14 @@
   background: linear-gradient(#272727, #0a0a0a);
 }
 
+#opensubtitles-dialog a, #opensubtitles-about-dialog a {
+  color: red;
+}
+
+#opensubtitles-dialog .opensubtitles-login-message {
+  margin-top: 4em;
+}
+
 #netflix-opensubtitles-subtitle-table {
   display: block;
   overflow-y: scroll;
@@ -72,6 +80,7 @@ td.netflix-opensubtitles-subtitle-row:hover {
   border: 1px solid white;
   padding: 0.5em;
   display: inline-block;
+  color: white !important;
 }
 
 #netflix-opensubtitles-buttons .netflix-opensubtitles-button {
