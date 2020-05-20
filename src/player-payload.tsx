@@ -9,6 +9,7 @@ import { srtToTtml } from "./srt-converter";
 import * as Sentry from '@sentry/browser';
 import * as SentryIntegrations from '@sentry/integrations';
 import * as iconv from "iconv-lite";
+import * as chardet from "chardet";
 
 const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
 
@@ -43,7 +44,7 @@ interface SubMetadata {
 }
 
 interface ConvertedSub {
-  baseSub: SubMetadata;
+  baseSub: SubMetadata | null;
   baseSrt: Srt.subTitleType[];
   url: string;
   filename: string;
@@ -294,6 +295,31 @@ const srtToDfxp = (srt: Srt.subTitleType[]) => {
   return URL.createObjectURL(new Blob([dfxpString], {type: 'application/ttml+xml'}));
 }
 
+const processSrtString = (srtString: string, baseFilename: string, opensubtitle: SubMetadata | null) => {
+  try {
+    const sub = Srt.parse(srtString);
+    if (sub.length === 0 || sub.length === 1 && Object.keys(sub[0]).length == 0) {
+      throw "Decoded SRT was empty.";
+    }
+
+    uiState.convertedSub = {
+      state: "done",
+      result: {
+        baseSub: opensubtitle,
+        baseSrt: sub,
+        url: srtToDfxp(sub),
+        filename: baseFilename + ".dfxp",
+        resyncOffset: 0
+      }
+    }
+    refresh();
+  } catch(error) {
+    uiState.convertedSub = { state: "failed" }
+    refresh();
+    throw error;
+  }
+}
+
 const downloadSub = async (opensubtitle: SubMetadata) => {
   Sentry.addBreadcrumb({
     message: 'download-sub',
@@ -318,31 +344,9 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
     srtString = await fetch(utf8Url).then(resp => resp.text())
   }
 
-  try {
-    const sub = Srt.parse(srtString);
-    if (sub.length === 0 || sub.length === 1 && Object.keys(sub[0]).length == 0) {
-      throw "Decoded SRT was empty.";
-    }
-
-    const content = uiState.playingContent!;
-    let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
-
-    uiState.convertedSub = {
-      state: "done",
-      result: {
-        baseSub: opensubtitle,
-        baseSrt: sub,
-        url: srtToDfxp(sub),
-        filename: `${contentName} - ${opensubtitle.LanguageName}.dfxp`,
-        resyncOffset: 0
-      }
-    }
-    refresh();
-  } catch(error) {
-    uiState.convertedSub = { state: "failed" }
-    refresh();
-    throw error;
-  }
+  const content = uiState.playingContent!;
+  const contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
+  processSrtString(srtString, `${contentName} - ${opensubtitle.LanguageName}`, opensubtitle);
 }
 
 const resyncChanged = (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -416,7 +420,7 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
     const sortedSubs = state.result.subtitles.slice(0).sort(compareBy(comparing(sub => isPinned(sub) ? 0 : 1), comparing(sub => sub.LanguageName), comparing(sub => sub.SubFileName.toLowerCase())));
 
     const subtitleRows = sortedSubs.map(sub => {
-      const isActive = props.state.convertedSub.state == "done" && props.state.convertedSub.result.baseSub.IDSubtitle === sub.IDSubtitle;
+      const isActive = props.state.convertedSub.state == "done" && props.state.convertedSub.result.baseSub?.IDSubtitle === sub.IDSubtitle;
 
       const className = isPinned(sub) ? "netflix-opensubtitles-pin-cell netflix-opensubtitles-pin-cell-pinned" : "netflix-opensubtitles-pin-cell";
       const pinTitle = isPinned(sub) ? "Click to not move this language to the top of the list" : "Click to move this language to the top of the list"
@@ -530,26 +534,20 @@ const updateReporting = (allowReporting: boolean) => {
   refresh();
 }
 
+const onFileUploaded = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+  const file = ev.target.files![0];
+  const fileBuf = new Buffer(await file.arrayBuffer());
+  const guessedEncoding = chardet.detect(fileBuf);
+  const srtString = iconv.decode(new Buffer(fileBuf), (guessedEncoding && iconv.encodingExists(guessedEncoding)) ? guessedEncoding : "utf-8");
+  processSrtString(srtString, file.name.replace(/\.srt$/, ""), null);
+};
+
 const MainComponent: React.SFC<{ state: UiState }> = (props) => {
-  let downloadArea: JSX.Element;
-
+  let subPicker: JSX.Element;
   if (props.state.settings.openSubtitlesCredentials !== null) {
-    downloadArea =
-      <div>
-        <div>
-          <div>
-            <h1>Download subtitles</h1>
-            <h2>Step 1: select your preferred subtitles</h2>
-          </div>
-          <SubtitleTable state={props.state} />
-        </div>
-
-        <div>
-          <FinishComponent state={props.state.convertedSub} />
-        </div>
-      </div>
+    subPicker = <SubtitleTable state={props.state} />;
   } else {
-    downloadArea =
+    subPicker =
       <div className="opensubtitles-login-message">
         <h3>UPDATE</h3>
         <p>
@@ -576,8 +574,22 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
         <a className="netflix-opensubtitles-button" href="#" onClick={closeSubtitleDialog}>⨯</a>
       </div>
 
-      { downloadArea }
+      <div>
+        <div>
+          <div>
+            <h1>Download subtitles</h1>
+            <h2>Step 1: select your preferred subtitles</h2>
+          </div>
+          {subPicker}
+          <p>
+          You can also upload your own .srt: <input type="file" onChange={onFileUploaded} />
+          </p>
+        </div>
 
+        <div>
+          <FinishComponent state={props.state.convertedSub} />
+        </div>
+      </div>
     </div>
 
     <div id="opensubtitles-about-dialog" style={{visibility: props.state.aboutDialogOpen ? "visible" : "hidden"}}>

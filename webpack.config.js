@@ -79,5 +79,8 @@ module.exports = env => ({
   },
   performance: {
     hints: false
+  },
+  node: {
+    fs: 'empty' // for chardet
   }
 });

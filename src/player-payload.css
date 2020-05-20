@@ -17,7 +17,8 @@
 }
 
 #opensubtitles-dialog .opensubtitles-login-message {
-  margin-top: 4em;
+  background: linear-gradient(#191919, #000000);
+  padding: 1em 1em;
 }
 
 #netflix-opensubtitles-subtitle-table {
