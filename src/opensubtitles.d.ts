@@ -12,6 +12,7 @@ export interface SubMetadata {
   IDSubtitle: string;
   SubTranslator: string;
   SubFormat: string;
+  SubEncoding: string;
 }
 
 export interface SearchSubtitlesResult {

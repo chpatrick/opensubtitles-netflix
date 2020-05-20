@@ -8,7 +8,7 @@ import opensubtitlesLogo from "./opensubtitles.webp";
 import { srtToTtml } from "./srt-converter";
 import * as Sentry from '@sentry/browser';
 import * as SentryIntegrations from '@sentry/integrations';
-import axios from 'axios';
+import * as iconv from "iconv-lite";
 
 const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
 
@@ -39,6 +39,7 @@ interface SubMetadata {
   IDSubtitle: string;
   SubTranslator: string;
   SubFormat: string;
+  SubEncoding: string;
 }
 
 interface ConvertedSub {
@@ -304,11 +305,24 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
   uiState.convertedSub = { state: "downloading" };
   refresh();
 
-  const utf8Url = opensubtitle.SubDownloadLink.replace('.gz', '').replace('download/', 'download/subencoding-utf8/');
+  const srtUrl = opensubtitle.SubDownloadLink.replace(/\.gz$/, "");
+  let srtString: string;
+
+  // Can we decode the subtitle ourselves?
+  if (iconv.encodingExists(opensubtitle.SubEncoding)) {
+    const subtitleArrayBuffer = await fetch(srtUrl).then(resp => resp.arrayBuffer());
+    srtString = iconv.decode(Buffer.from(subtitleArrayBuffer), opensubtitle.SubEncoding);
+  } else {
+    // Try to get the UTF-8 subtitle from OpenSubtitles (can be unreliable).
+    const utf8Url = srtUrl.replace('download/', 'download/subencoding-utf8/');
+    srtString = await fetch(utf8Url).then(resp => resp.text())
+  }
 
   try {
-    const srtResponse = await axios.get(utf8Url, { responseType: 'text' });
-    const sub = Srt.parse(srtResponse.data);
+    const sub = Srt.parse(srtString);
+    if (sub.length === 0 || sub.length === 1 && Object.keys(sub[0]).length == 0) {
+      throw "Decoded SRT was empty.";
+    }
 
     const content = uiState.playingContent!;
     let contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
