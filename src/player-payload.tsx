@@ -684,7 +684,7 @@ const checkPlaying = () => {
       const episodeTitleString = episodeNumAndTitleElem.get(1).textContent;
 
       if (episodeNumString && episodeTitleString) {
-        const episodeNumMatch = /S(\d+):E(\d+)/.exec(episodeNumString);
+        const episodeNumMatch = /(\d+)\D+(\d+)/.exec(episodeNumString);
         if (episodeNumMatch) {
           newPlayingEpisode = {
             type: "episode",
