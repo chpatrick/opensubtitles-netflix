@@ -145,17 +145,7 @@ function reportRejection(error: any) {
   })
 }
 
-const loadSubtitles = async (content: VideoInfo) => {
-  Sentry.addBreadcrumb({
-    message: 'load-subtitles',
-    data: {
-      'content': JSON.stringify(content)
-    }
-  });
-
-  uiState.subtitles = { state: "downloading" };
-  refresh();
-
+const contentToQuery = (content: VideoInfo): Query => {
   const query: Query = {};
   if (content.type === "film") {
     query.query = content.title;
@@ -165,6 +155,19 @@ const loadSubtitles = async (content: VideoInfo) => {
     query.episode = content.info.episode + '';
   }
 
+  return query;
+}
+
+const loadSubtitles = async (query: Query) => {
+  Sentry.addBreadcrumb({
+    message: 'load-subtitles',
+    data: {
+      'query': JSON.stringify(query)
+    }
+  });
+
+  uiState.subtitles = { state: "downloading" };
+  refresh();
 
   try {
     await (uiState.opensubtitlesToken !== null ? Promise.resolve() : logIn(uiState.settings.openSubtitlesCredentials));
@@ -198,7 +201,7 @@ const openSubtitleDialog = () => {
 
   uiState.subtitleDialogOpen = true;
   if (uiState.subtitles.state !== "done" && uiState.settings.openSubtitlesCredentials !== null) {
-    loadSubtitles(uiState.playingContent).catch(reportRejection);
+    loadSubtitles(contentToQuery(uiState.playingContent)).catch(reportRejection);
   }
   refresh();
 }
@@ -404,15 +407,21 @@ const clickPin = (language: string, isPinned: boolean) => {
   refresh();
 }
 
+const doSearch = (query: string) => {
+  loadSubtitles({ query }).catch(reportRejection);
+}
+
 const SubtitleTable: React.SFC<{ state: UiState }> = props => {
   const state = props.state.subtitles;
 
+  let results: React.ReactElement;
+
   if (state.state === "idle") {
-    return <div></div>;
+    results = <div className="opensubtitles-dark-box"></div>;
   } else if (state.state === "downloading") {
-    return <div className="netflix-opensubtitles-step">Downloading subtitle list...</div>;
+    results = <div className="opensubtitles-dark-box">Downloading subtitle list...</div>;
   } else if (state.state === "failed") {
-    return <div className="netflix-opensubtitles-step">Failed to fetch subtitles :(</div>;
+    results = <div className="opensubtitles-dark-box">Failed to fetch subtitles :(</div>;
   } else {
     const pinnedLanguages = getPinnedLanguages();
     const isPinned = (sub: SubMetadata) => pinnedLanguages.has(sub.ISO639);
@@ -433,14 +442,24 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
         </tr>
     });
 
-    return <div className="netflix-opensubtitles-step">
-             <table id="netflix-opensubtitles-subtitle-table">
+    results = <table id="netflix-opensubtitles-subtitle-table" className="opensubtitles-dark-box">
                <tbody>
                  {subtitleRows}
                </tbody>
-             </table>
-           </div>;
+             </table>;
   }
+
+  const searchBox = React.useRef<HTMLInputElement>(null);
+
+  return <div>
+    <form>
+      Custom query:
+        &nbsp;<input type="text" ref={searchBox} placeholder="search query" />
+        &nbsp;<input type="submit" value="Search" onClick={ev => { ev.preventDefault(); doSearch(searchBox.current!.value); }} />
+        &nbsp;<input type="button" value="Search for current content" disabled={uiState.playingContent == null} onClick={() => loadSubtitles(contentToQuery(uiState.playingContent!)).catch(reportRejection)} />
+    </form>
+    {results}
+    </div>
 };
 
 const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (props) => {
@@ -516,7 +535,7 @@ const tryNewLogIn = async () => {
     refresh();
 
     if (uiState.playingContent) {
-      loadSubtitles(uiState.playingContent).catch(reportRejection);
+      loadSubtitles(contentToQuery(uiState.playingContent)).catch(reportRejection);
     }
   } catch (error) {
     uiState.loginState = { state: "failed" };
@@ -548,7 +567,7 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
     subPicker = <SubtitleTable state={props.state} />;
   } else {
     subPicker =
-      <div className="opensubtitles-login-message">
+      <div className="opensubtitles-dark-box">
         <h3>UPDATE</h3>
         <p>
         As of April 24 2020, OpenSubtitles <a href="https://forum.opensubtitles.org/viewtopic.php?f=11&amp;t=17110" target="_blank">requires</a> users to sign in to use their service. 😔
@@ -725,8 +744,8 @@ $(() => {
   $(document.body)
     .append(container)
     .on('keydown', ev => {
-      if (ev.key.toLowerCase() === "d") {
-        toggleSubtitleDialog();
+      if (ev.key.toLowerCase() === "d" && !uiState.subtitleDialogOpen) {
+        openSubtitleDialog();
       }
     });
 

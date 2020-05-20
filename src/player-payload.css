@@ -16,7 +16,7 @@
   color: red;
 }
 
-#opensubtitles-dialog .opensubtitles-login-message {
+#opensubtitles-dialog .opensubtitles-dark-box {
   background: linear-gradient(#191919, #000000);
   padding: 1em 1em;
 }
@@ -25,7 +25,6 @@
   display: block;
   overflow-y: scroll;
   height: 40vh;
-  background: linear-gradient(#191919, #000000);
 }
 
 #netflix-opensubtitles-os-logo {
@@ -115,7 +114,7 @@ td.netflix-opensubtitles-subtitle-row:hover {
   margin: -12em 0 0 -20em;
 }
 
-#opensubtitles-about-dialog input {
+#opensubtitles-dialog input, #opensubtitles-about-dialog input {
   background: black;
   color: white;
   border-width: 0px;
