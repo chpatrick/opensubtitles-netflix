@@ -23,7 +23,7 @@
     "css-loader": "^3.5.1",
     "htmlparser2": "^3.10.1",
     "iconv-lite": "^0.5.1",
-    "jquery": "^3.4.1",
+    "jquery": "^3.5.0",
     "react": "^16.7.0",
     "react-dom": "^16.7.0",
     "style-loader": "^1.1.3",
