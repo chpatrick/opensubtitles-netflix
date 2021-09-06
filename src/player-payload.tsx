@@ -10,8 +10,11 @@ import * as Sentry from '@sentry/browser';
 import * as SentryIntegrations from '@sentry/integrations';
 import * as iconv from "iconv-lite";
 import * as chardet from "chardet";
+import * as Protocol from "./protocol";
 
-const openSubtitles = new OS.OS(undefined, true); // use default SSL endpoint
+const pendingCalls: {
+  [ requestId: number ]: [ (response: any) => void, (error: any) => void ]
+} = {};
 
 let container: HTMLDivElement;
 
@@ -171,7 +174,10 @@ const loadSubtitles = async (query: Query) => {
 
   try {
     await (uiState.opensubtitlesToken !== null ? Promise.resolve() : logIn(uiState.settings.openSubtitlesCredentials));
-    const results: { data: SubMetadata[] } = await openSubtitles.SearchSubtitles(uiState.opensubtitlesToken!, [ query ]);
+    const results: { data: SubMetadata[] } = await callOpenSubtitles("SearchSubtitles", {
+      token: uiState.opensubtitlesToken!,
+      array_queries: [ query ]
+    });
 
     const subs = results.data.filter(sub => sub.SubFormat === 'srt');
 
@@ -508,7 +514,12 @@ class LoginError extends Error {
 }
 
 const logIn = async (credentials: { username: string, password: string } | null) => {
-  const result = await openSubtitles.LogIn(credentials?.username ?? '', credentials?.password ?? '', 'en', OS_USER_AGENT);
+  const result = await callOpenSubtitles("LogIn", {
+    username: credentials?.username ?? '',
+    password: credentials?.password ?? '',
+    language: 'en',
+    useragent: OS_USER_AGENT
+  });
   if (!result.status.includes("200")) {
     throw new LoginError(credentials === null, result);
   }
@@ -671,22 +682,44 @@ const refresh = () => {
   ReactDOM.render(<MainComponent state={uiState} />, container);
 }
 
-const sendMessageToBackground = (payload: NetflixOpensubtitlesPayload) => {
+const sendMessageToBackground = (payload: Protocol.NetflixOpensubtitlesPayload) => {
   window.postMessage({
     'tag': 'netflix-opensubtitles-message',
     'direction': "to-background",
     'payload': payload
-  } as NetflixOpensubtitlesMessage, "*")
+  } as Protocol.NetflixOpensubtitlesMessage, "*")
 };
 
 window.addEventListener('message', ev => {
   if (ev.data['tag'] === "netflix-opensubtitles-message" && ev.data['direction'] === "from-background") {
-    const message = ev.data as NetflixOpensubtitlesMessage;
+    const message = (ev.data as Protocol.NetflixOpensubtitlesMessage).payload;
 
-    if (message['payload']['type'] == "page-action-clicked") {
+    if (message.type == "page-action-clicked") {
       toggleSubtitleDialog();
+    } else if (message.type == "opensubtitles-response") {
+      const [ resolve, reject ] = pendingCalls[message.requestId];
+      if (message.response.type === 'error') {
+        reject(message.response.error);
+      } else {
+        resolve(message.response.value);
+      }
+      delete pendingCalls[message.requestId];
     }
   }
+});
+
+let currentRequestId = 0;
+
+const callOpenSubtitles = <Method extends Protocol.Method>(method: Method, request: Protocol.RequestForMethod[Method]) =>
+  new Promise<Protocol.ResponseForMethod[Method]>((resolve, reject) => {
+  pendingCalls[currentRequestId] = [ resolve, reject ];
+  sendMessageToBackground({
+    type: "opensubtitles-call",
+    requestId: currentRequestId,
+    method: method,
+    request: request,
+  });
+  currentRequestId++;
 });
 
 const checkPlaying = () => {

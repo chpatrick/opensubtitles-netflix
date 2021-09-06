@@ -10,7 +10,8 @@
       "default_title": "Download subtitles"
     },
     "permissions": [
-      "activeTab"
+      "activeTab",
+      "https://api.opensubtitles.org"
     ],
     "content_scripts": [
        {

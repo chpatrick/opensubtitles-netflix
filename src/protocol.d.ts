@@ -1,30 +1,48 @@
+import { Query, LogInResult, SearchSubtitlesResult } from "./opensubtitles";
+
 interface NetflixOpensubtitlesMessage {
   tag: "netflix-opensubtitles-message";
   payload: NetflixOpensubtitlesPayload;
   direction: "to-background" | "from-background";
 }
 
+interface LoginRequest {
+  username: string;
+  password: string;
+  language: string;
+  useragent: string;
+}
+
+interface SearchSubtitlesRequest {
+  token: string,
+  array_queries: Query[],
+}
+
+type Method = 'LogIn' | 'SearchSubtitles'
+
+interface RequestForMethod {
+  LogIn: LoginRequest,
+  SearchSubtitles: SearchSubtitlesRequest
+}
+
+interface ResponseForMethod {
+  LogIn: LogInResult,
+  SearchSubtitles: SearchSubtitlesResult
+}
+
+type Response = { type: "error", error: any } | { type: "success", value: LogInResult | SearchSubtitlesResult }
+
+type OpenSubtitlesResponse
+  = {
+    method: 'LogIn',
+  } & LogInResult
+  | {
+      method: 'SearchSubtitles',
+  } & SearchSubtitlesResult
+
 type NetflixOpensubtitlesPayload
   = { type: "show-page-action" }
   | { type: "hide-page-action" }
   | { type: "page-action-clicked" }
-
-declare module "*.css" {
-  const content: any;
-  export default content;
-}
-
-declare module "*.svg" {
-  const path: string;
-  export default path;
-}
-
-declare module "*.webp" {
-  const path: string;
-  export default path;
-}
-
-// User agent passed in from configuration.
-declare const OS_USER_AGENT: string;
-declare const OS_PAYLOAD_SRC: string;
-declare const OS_SENTRY_DSN: string | null;
+  | { type: "opensubtitles-call", requestId: number, method: Method, request: LoginRequest | SearchSubtitlesRequest }
+  | { type: "opensubtitles-response", requestId: number, method: Method, response: Response }
