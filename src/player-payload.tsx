@@ -11,12 +11,11 @@ import * as SentryIntegrations from '@sentry/integrations';
 import * as iconv from "iconv-lite";
 import * as chardet from "chardet";
 import * as Protocol from "./protocol";
+import create from 'zustand'
 
 const pendingCalls: {
   [ requestId: number ]: [ (response: any) => void, (error: any) => void ]
 } = {};
-
-let container: HTMLDivElement;
 
 interface EpisodeInfo {
   seriesTitle: string;
@@ -71,11 +70,24 @@ interface UiState {
   aboutDialogOpen: boolean;
   subtitles: DownloadState<Subtitles>;
   convertedSub: DownloadState<ConvertedSub>;
-
   tentativeUsername: string;
   tentativePassword: string;
   loginState: DownloadState<{}>;
   opensubtitlesToken: string | null;
+
+  setSettings: (value: Settings) => void;
+  setPlayingContent: (value: VideoInfo | null) => void;
+  setSubtitleDialogOpen: (value: boolean) => void;
+  setAboutDialogOpen: (value: boolean) => void;
+  setSubtitles: (value: DownloadState<Subtitles>) => void;
+  setConvertedSub: (value: DownloadState<ConvertedSub>) => void;
+  setTentativeUsername: (value: string) => void;
+  setTentativePassword: (value: string) => void;
+  setLoginState: (value: DownloadState<{}>) => void;
+  setOpensubtitlesToken: (value: string | null) => void;
+
+  applyResyncOffset: (newOffset: number) => void;
+  updateSettings: (update: (settings: Settings) => void) => void;
 }
 
 interface Query {
@@ -84,7 +96,7 @@ interface Query {
   episode?: string;
 }
 
-const uiState: UiState = {
+const useStore = create<UiState>(set => ({
   settings: {
     openSubtitlesCredentials: null,
     enableReporting: true,
@@ -98,12 +110,35 @@ const uiState: UiState = {
   convertedSub: { state: "idle" },
   loginState: { state: "idle" },
   tentativeUsername: '',
-  tentativePassword: ''
-};
+  tentativePassword: '',
+
+  setSettings: (value: Settings) => set(state => { state.settings = value; }),
+  setPlayingContent: (value: VideoInfo | null) => set(state => { state.playingContent = value; }),
+  setSubtitleDialogOpen: (value: boolean) => set(state => { state.subtitleDialogOpen = value; }),
+  setAboutDialogOpen: (value: boolean) => set(state => { state.aboutDialogOpen = value; }),
+  setSubtitles: (value: DownloadState<Subtitles>) => set(state => { state.subtitles = value; }),
+  setConvertedSub: (value: DownloadState<ConvertedSub>) => set(state => { state.convertedSub = value; }),
+  setTentativeUsername: (value: string) => set(state => { state.tentativeUsername = value; }),
+  setTentativePassword: (value: string) => set(state => { state.tentativePassword = value; }),
+  setLoginState: (value: DownloadState<{}>) => set(state => { state.loginState = value; }),
+  setOpensubtitlesToken: (value: string | null) => set(state => { state.opensubtitlesToken = value; }),
+
+  applyResyncOffset: (newOffset: number) => set(uiState => {
+    if (uiState.convertedSub.state === 'done') {
+      uiState.convertedSub.result.resyncOffset = newOffset;
+      uiState.convertedSub.result.url = srtToDfxp(Srt.resync(uiState.convertedSub.result.baseSrt, newOffset * 1000));
+    }
+  }),
+
+  updateSettings: (update: (settings: Settings) => void) => set(uiState => {
+    update(uiState.settings);
+  }),
+}));
 
 const settingsKey = 'netflix-opensubtitles-settings';
 const maybeSettings = localStorage.getItem(settingsKey);
 if (maybeSettings !== null) {
+  const uiState = useStore.getState();
   uiState.settings = JSON.parse(maybeSettings);
   uiState.tentativeUsername = uiState.settings.openSubtitlesCredentials?.username ?? '';
 }
@@ -123,17 +158,13 @@ const deinitSentry = () => {
   Sentry.init();
 }
 
-if (OS_SENTRY_DSN !== null && uiState.settings.enableReporting) {
+if (OS_SENTRY_DSN !== null && useStore.getState().settings.enableReporting) {
   initSentry();
 }
 
 
-function saveSettings() {
-  localStorage.setItem(settingsKey, JSON.stringify(uiState.settings));
-}
-
-function getPinnedLanguages(): Set<string> {
-  return new Set<string>(uiState.settings.pinnedLanguages);
+function saveSettings(settings: Settings) {
+  localStorage.setItem(settingsKey, JSON.stringify(settings));
 }
 
 function reportRejection(error: any) {
@@ -161,7 +192,7 @@ const contentToQuery = (content: VideoInfo): Query => {
   return query;
 }
 
-const loadSubtitles = async (query: Query) => {
+const loadSubtitles = async (uiState: UiState, query: Query) => {
   Sentry.addBreadcrumb({
     message: 'load-subtitles',
     data: {
@@ -169,11 +200,10 @@ const loadSubtitles = async (query: Query) => {
     }
   });
 
-  uiState.subtitles = { state: "downloading" };
-  refresh();
+  uiState.setSubtitles({ state: "downloading" });
 
   try {
-    await (uiState.opensubtitlesToken !== null ? Promise.resolve() : logIn(uiState.settings.openSubtitlesCredentials));
+    await (uiState.opensubtitlesToken !== null ? Promise.resolve() : logIn(uiState, uiState.settings.openSubtitlesCredentials));
     const results: { data: SubMetadata[] } = await callOpenSubtitles("SearchSubtitles", {
       token: uiState.opensubtitlesToken!,
       array_queries: [ query ]
@@ -181,61 +211,54 @@ const loadSubtitles = async (query: Query) => {
 
     const subs = results.data.filter(sub => sub.SubFormat === 'srt');
 
-    uiState.subtitles = { state: "done", result: {
+    uiState.setSubtitles({ state: "done", result: {
       subtitles: subs
-     }
-    };
-    refresh();
+    }});
 
-    const pinnedLanguages = getPinnedLanguages();
+    const pinnedLanguages = new Set(uiState.settings.pinnedLanguages);
     const pinnedSubs = subs.filter((sub: SubMetadata) => pinnedLanguages.has(sub.ISO639));
     // If there's exactly one pinned sub, download it immediately.
     if (pinnedSubs.length == 1) {
-      downloadSub(pinnedSubs[0]).catch(reportRejection);
+      downloadSub(uiState, pinnedSubs[0]).catch(reportRejection);
     }
   } catch (error) {
-    uiState.subtitles = { state: "failed" };
-    refresh();
+    uiState.setSubtitles({ state: "failed" });
     throw error;
   }
 }
 
-const openSubtitleDialog = () => {
+const openSubtitleDialog = (uiState: UiState) => {
   if (uiState.playingContent === null) {
     return;
   }
 
-  uiState.subtitleDialogOpen = true;
+  uiState.setSubtitleDialogOpen(true);
   if (uiState.subtitles.state !== "done" && uiState.settings.openSubtitlesCredentials !== null) {
-    loadSubtitles(contentToQuery(uiState.playingContent)).catch(reportRejection);
+    loadSubtitles(uiState, contentToQuery(uiState.playingContent)).catch(reportRejection);
   }
-  refresh();
 }
 
-const closeSubtitleDialog = () => {
-  uiState.subtitleDialogOpen = false;
-  refresh();
+const closeSubtitleDialog = (uiState: UiState) => {
+  uiState.setSubtitleDialogOpen(false);
 }
 
-const toggleSubtitleDialog = () => {
+const toggleSubtitleDialog = (uiState: UiState) => {
   if (uiState.subtitleDialogOpen) {
-    closeSubtitleDialog();
+    closeSubtitleDialog(uiState);
   } else {
-    openSubtitleDialog();
+    openSubtitleDialog(uiState);
   }
 }
 
-const openAbout = () => {
-  uiState.aboutDialogOpen = true;
-  refresh();
+const openAbout = (uiState: UiState) => {
+  uiState.setAboutDialogOpen(true);
 };
 
-const closeAbout = () => {
-  uiState.aboutDialogOpen = false;
-  refresh();
+const closeAbout = (uiState: UiState) => {
+  uiState.setAboutDialogOpen(false);
 };
 
-const activateClicked = () => {
+const activateClicked = (uiState: UiState) => {
   // extremely hacky way to simulate a keypress in chromium
   // this only works when the script is injected, not directly in the content script
   const keyCode = 84; // T
@@ -253,10 +276,9 @@ const activateClicked = () => {
   }),
   b.initKeyboardEvent ? b.initKeyboardEvent('keydown', true, true, document.defaultView, false, true, true, true, keyCode, keyCode) : b.initKeyEvent('keydown', true, true, document.defaultView, false, true, true, true, keyCode, 0),
   b.keyCodeVal = keyCode;
-  $('div.NFPlayer').get(0).dispatchEvent(b);
+  $('div.watch-video').get(0).dispatchEvent(b);
 
-  uiState.subtitleDialogOpen = false;
-  refresh();
+  uiState.setSubtitleDialogOpen(false);
 }
 
 const zeroPad = (length: number, n: number) => {
@@ -304,14 +326,14 @@ const srtToDfxp = (srt: Srt.subTitleType[]) => {
   return URL.createObjectURL(new Blob([dfxpString], {type: 'application/ttml+xml'}));
 }
 
-const processSrtString = (srtString: string, baseFilename: string, opensubtitle: SubMetadata | null) => {
+const processSrtString = (uiState: UiState, srtString: string, baseFilename: string, opensubtitle: SubMetadata | null) => {
   try {
     const sub = Srt.parse(srtString);
     if (sub.length === 0 || sub.length === 1 && Object.keys(sub[0]).length == 0) {
       throw "Decoded SRT was empty.";
     }
 
-    uiState.convertedSub = {
+    uiState.setConvertedSub({
       state: "done",
       result: {
         baseSub: opensubtitle,
@@ -320,16 +342,14 @@ const processSrtString = (srtString: string, baseFilename: string, opensubtitle:
         filename: baseFilename + ".dfxp",
         resyncOffset: 0
       }
-    }
-    refresh();
+    });
   } catch(error) {
-    uiState.convertedSub = { state: "failed" }
-    refresh();
+    uiState.setConvertedSub({ state: "failed" });
     throw error;
   }
 }
 
-const downloadSub = async (opensubtitle: SubMetadata) => {
+const downloadSub = async (uiState: UiState, opensubtitle: SubMetadata) => {
   Sentry.addBreadcrumb({
     message: 'download-sub',
     data: {
@@ -337,8 +357,7 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
     }
   });
 
-  uiState.convertedSub = { state: "downloading" };
-  refresh();
+  uiState.setConvertedSub({ state: "downloading" });
 
   const srtUrl = opensubtitle.SubDownloadLink.replace(/\.gz$/, "");
   let srtString: string;
@@ -355,18 +374,13 @@ const downloadSub = async (opensubtitle: SubMetadata) => {
 
   const content = uiState.playingContent!;
   const contentName = content.type === "film" ? content.title : `${content.info.seriesTitle} - S${zeroPad(2, content.info.season)}E${zeroPad(2, content.info.episode)}`;
-  processSrtString(srtString, `${contentName} - ${opensubtitle.LanguageName}`, opensubtitle);
+  processSrtString(uiState, srtString, `${contentName} - ${opensubtitle.LanguageName}`, opensubtitle);
 }
 
-const resyncChanged = (ev: React.ChangeEvent<HTMLInputElement>) => {
+const resyncChanged = (uiState: UiState) => (ev: React.ChangeEvent<HTMLInputElement>) => {
   const newOffset = (ev.target as HTMLInputElement).valueAsNumber;
 
-  if (uiState.convertedSub.state == "done") {
-    uiState.convertedSub.result.resyncOffset = newOffset;
-    uiState.convertedSub.result.url = srtToDfxp(Srt.resync(uiState.convertedSub.result.baseSrt, newOffset * 1000));
-  }
-
-  refresh();
+  uiState.applyResyncOffset(newOffset);
 }
 
 type Comparison<T> = (x: T, y: T) => number;
@@ -401,24 +415,24 @@ function compareBy<T>(...comparisons: Comparison<T>[]): Comparison<T> {
   }
 }
 
-const clickPin = (language: string, isPinned: boolean) => {
-  const langs = getPinnedLanguages();
+const clickPin = (uiState: UiState, language: string, isPinned: boolean) => {
+  const langs = new Set(uiState.settings.pinnedLanguages);
   if (isPinned) {
     langs.delete(language);
   } else {
     langs.add(language);
   }
-  uiState.settings.pinnedLanguages = Array.from(langs);
-  saveSettings();
-  refresh();
+  uiState.updateSettings(settings => { settings.pinnedLanguages = Array.from(langs); });
+  saveSettings(uiState.settings);
 }
 
-const doSearch = (query: string) => {
-  loadSubtitles({ query }).catch(reportRejection);
+const doSearch = (uiState: UiState, query: string) => {
+  loadSubtitles(uiState, { query }).catch(reportRejection);
 }
 
-const SubtitleTable: React.SFC<{ state: UiState }> = props => {
-  const state = props.state.subtitles;
+const SubtitleTable: React.SFC<{}> = props => {
+  const uiState = useStore();
+  const state = uiState.subtitles;
 
   let results: React.ReactElement;
 
@@ -429,21 +443,21 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
   } else if (state.state === "failed") {
     results = <div className="opensubtitles-dark-box">Failed to fetch subtitles :(</div>;
   } else {
-    const pinnedLanguages = getPinnedLanguages();
+    const pinnedLanguages = new Set(uiState.settings.pinnedLanguages);
     const isPinned = (sub: SubMetadata) => pinnedLanguages.has(sub.ISO639);
 
     const sortedSubs = state.result.subtitles.slice(0).sort(compareBy(comparing(sub => isPinned(sub) ? 0 : 1), comparing(sub => sub.LanguageName), comparing(sub => sub.SubFileName.toLowerCase())));
 
     const subtitleRows = sortedSubs.map(sub => {
-      const isActive = props.state.convertedSub.state == "done" && props.state.convertedSub.result.baseSub?.IDSubtitle === sub.IDSubtitle;
+      const isActive = uiState.convertedSub.state == "done" && uiState.convertedSub.result.baseSub?.IDSubtitle === sub.IDSubtitle;
 
       const className = isPinned(sub) ? "netflix-opensubtitles-pin-cell netflix-opensubtitles-pin-cell-pinned" : "netflix-opensubtitles-pin-cell";
       const pinTitle = isPinned(sub) ? "Click to not move this language to the top of the list" : "Click to move this language to the top of the list"
 
       return <tr key={sub.IDSubtitle}>
-          <td className={className} onClick={() => clickPin(sub.ISO639, isPinned(sub))} title={pinTitle}></td>
+          <td className={className} onClick={() => clickPin(uiState, sub.ISO639, isPinned(sub))} title={pinTitle}></td>
           <td>{sub.LanguageName}</td>
-          <td onClick={() => downloadSub(sub).catch(reportRejection)} className={isActive ? "netflix-opensubtitles-subtitle-row-chosen netflix-opensubtitles-subtitle-row" : "netflix-opensubtitles-subtitle-row"}>{sub.SubFileName}</td>
+          <td onClick={() => downloadSub(uiState, sub).catch(reportRejection)} className={isActive ? "netflix-opensubtitles-subtitle-row-chosen netflix-opensubtitles-subtitle-row" : "netflix-opensubtitles-subtitle-row"}>{sub.SubFileName}</td>
           <td>{sub.SubTranslator}</td>
         </tr>
     });
@@ -461,14 +475,15 @@ const SubtitleTable: React.SFC<{ state: UiState }> = props => {
     <form>
       Custom query:
         &nbsp;<input type="text" ref={searchBox} placeholder="search query" />
-        &nbsp;<input type="submit" value="Search" onClick={ev => { ev.preventDefault(); doSearch(searchBox.current!.value); }} />
-        &nbsp;<input type="button" value="Search for current content" disabled={uiState.playingContent == null} onClick={() => loadSubtitles(contentToQuery(uiState.playingContent!)).catch(reportRejection)} />
+        &nbsp;<input type="submit" value="Search" onClick={ev => { ev.preventDefault(); doSearch(uiState, searchBox.current!.value); }} />
+        &nbsp;<input type="button" value="Search for current content" disabled={uiState.playingContent == null} onClick={() => loadSubtitles(uiState, contentToQuery(uiState.playingContent!)).catch(reportRejection)} />
     </form>
     {results}
     </div>
 };
 
 const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (props) => {
+  const uiState = useStore();
   const state = props.state;
 
   if (state.state === "idle") {
@@ -481,13 +496,13 @@ const FinishComponent: React.SFC<{ state: DownloadState<ConvertedSub> }> = (prop
     return <div>
         <div className="netflix-opensubtitles-step">
           <strong>Step 2: adjust timing (optional): </strong>
-          <input id="netflix-opensubtitles-timing-adjuster" value={state.result.resyncOffset} type="number" step="0.1" onChange={resyncChanged} /> seconds
+          <input id="netflix-opensubtitles-timing-adjuster" value={state.result.resyncOffset} type="number" step="0.1" onChange={resyncChanged(uiState)} /> seconds
         </div>
         <div className="netflix-opensubtitles-step">
           <strong>Step 3: </strong> <a href={state.result.url} download={state.result.filename} className="netflix-opensubtitles-button">Download</a>
         </div>
         <div className="netflix-opensubtitles-step">
-          <strong>Step 4: </strong><a href="#" onClick={activateClicked} className="netflix-opensubtitles-button">Activate</a>
+          <strong>Step 4: </strong><a href="#" onClick={() => activateClicked(uiState)} className="netflix-opensubtitles-button">Activate</a>
         </div>
       </div>;
   }
@@ -513,7 +528,7 @@ class LoginError extends Error {
   result: OS.LogInResult;
 }
 
-const logIn = async (credentials: { username: string, password: string } | null) => {
+const logIn = async (uiState: UiState, credentials: { username: string, password: string } | null) => {
   const result = await callOpenSubtitles("LogIn", {
     username: credentials?.username ?? '',
     password: credentials?.password ?? '',
@@ -524,58 +539,59 @@ const logIn = async (credentials: { username: string, password: string } | null)
     throw new LoginError(credentials === null, result);
   }
 
-  uiState.opensubtitlesToken = result.token;
+  uiState.setOpensubtitlesToken(result.token);
 }
 
-const tryNewLogIn = async () => {
+const tryNewLogIn = async (uiState: UiState) => {
   try {
-    uiState.loginState = { state: "downloading" };
-    refresh();
+    uiState.setLoginState({ state: "downloading" });
 
-    await logIn({ username: uiState.tentativeUsername, password: uiState.tentativePassword });
+    await logIn(uiState, { username: uiState.tentativeUsername, password: uiState.tentativePassword });
     if (uiState.tentativeUsername.trim() === '' && uiState.tentativePassword.trim() === '') {
-      uiState.settings.openSubtitlesCredentials = null;
+      uiState.updateSettings(settings => { settings.openSubtitlesCredentials = null; });
     } else {
-      uiState.settings.openSubtitlesCredentials = {
-        username: uiState.tentativeUsername,
-        password: uiState.tentativePassword
-      };
+      uiState.updateSettings(settings => { 
+        settings.openSubtitlesCredentials = {
+          username: uiState.tentativeUsername,
+          password: uiState.tentativePassword
+        };
+      });
     }
-    uiState.loginState = { state: "done", result: {} };
-    saveSettings();
-    refresh();
+    uiState.setLoginState({ state: "done", result: {} });
+    saveSettings(uiState.settings);
 
     if (uiState.playingContent) {
-      loadSubtitles(contentToQuery(uiState.playingContent)).catch(reportRejection);
+      loadSubtitles(uiState, contentToQuery(uiState.playingContent)).catch(reportRejection);
     }
   } catch (error) {
-    uiState.loginState = { state: "failed" };
+    uiState.setLoginState({ state: "failed" });
   }
 };
 
-const updateReporting = (allowReporting: boolean) => {
+const updateReporting = (uiState: UiState, allowReporting: boolean) => {
   if (!uiState.settings.enableReporting && allowReporting) {
     initSentry();
   } else if (uiState.settings.enableReporting && !allowReporting) {
     deinitSentry();
   }
-  uiState.settings.enableReporting = allowReporting;
-  saveSettings();
-  refresh();
+  uiState.updateSettings(settings => { settings.enableReporting = allowReporting; });
+  saveSettings(uiState.settings);
 }
 
-const onFileUploaded = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+const onFileUploaded = (uiState: UiState) => async (ev: React.ChangeEvent<HTMLInputElement>) => {
   const file = ev.target.files![0];
   const fileBuf = new Buffer(await file.arrayBuffer());
   const guessedEncoding = chardet.detect(fileBuf);
   const srtString = iconv.decode(new Buffer(fileBuf), (guessedEncoding && iconv.encodingExists(guessedEncoding)) ? guessedEncoding : "utf-8");
-  processSrtString(srtString, file.name.replace(/\.srt$/, ""), null);
+  processSrtString(uiState, srtString, file.name.replace(/\.srt$/, ""), null);
 };
 
-const MainComponent: React.SFC<{ state: UiState }> = (props) => {
+const MainComponent: React.SFC<{}> = (props) => {
+  const uiState = useStore();
+
   let subPicker: JSX.Element;
-  if (props.state.settings.openSubtitlesCredentials !== null) {
-    subPicker = <SubtitleTable state={props.state} />;
+  if (uiState.settings.openSubtitlesCredentials !== null) {
+    subPicker = <SubtitleTable />;
   } else {
     subPicker =
       <div className="opensubtitles-dark-box">
@@ -588,20 +604,20 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
         </p>
         <ol>
           <li><a href="https://www.opensubtitles.org/newuser" target="_blank">Register</a> on OpenSubtitles (if you don't already have an account)</li>
-          <li><a href="#" onClick={openAbout}>Log in</a> in this extension</li>
+          <li><a href="#" onClick={() => openAbout(uiState)}>Log in</a> in this extension</li>
         </ol>
       </div>;
   }
 
   return <div>
-    <div id="opensubtitles-dialog" style={{visibility: props.state.subtitleDialogOpen ? "visible" : "hidden"}}>
+    <div id="opensubtitles-dialog" style={{visibility: uiState.subtitleDialogOpen ? "visible" : "hidden"}}>
       <div id="netflix-opensubtitles-buttons">
         {OS_SENTRY_DSN !== null &&
           <a className="netflix-opensubtitles-button" href="#" onClick={reportProblem}>Report a problem</a>
         }
         <a className="netflix-opensubtitles-button" href="https://ko-fi.com/R6R0XQSG" target="_blank">Buy me a coffee</a>
-        <a className="netflix-opensubtitles-button" href="#" onClick={openAbout}>Settings &amp; About</a>
-        <a className="netflix-opensubtitles-button" href="#" onClick={closeSubtitleDialog}>⨯</a>
+        <a className="netflix-opensubtitles-button" href="#" onClick={() =>openAbout(uiState)}>Settings &amp; About</a>
+        <a className="netflix-opensubtitles-button" href="#" onClick={() =>closeSubtitleDialog(uiState)}>⨯</a>
       </div>
 
       <div>
@@ -612,19 +628,19 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
           </div>
           {subPicker}
           <p>
-          You can also upload your own .srt: <input type="file" onChange={onFileUploaded} />
+          You can also upload your own .srt: <input type="file" onChange={onFileUploaded(uiState)} />
           </p>
         </div>
 
         <div>
-          <FinishComponent state={props.state.convertedSub} />
+          <FinishComponent state={uiState.convertedSub} />
         </div>
       </div>
     </div>
 
-    <div id="opensubtitles-about-dialog" style={{visibility: props.state.aboutDialogOpen ? "visible" : "hidden"}}>
+    <div id="opensubtitles-about-dialog" style={{visibility: uiState.aboutDialogOpen ? "visible" : "hidden"}}>
       <div id="netflix-opensubtitles-buttons">
-        <a className="netflix-opensubtitles-button" href="#" onClick={closeAbout}>⨯</a>
+        <a className="netflix-opensubtitles-button" href="#" onClick={() => closeAbout(uiState)}>⨯</a>
       </div>
 
       <form>
@@ -633,24 +649,24 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
           <input
             type="text"
             placeholder="Username"
-            value={props.state.tentativeUsername}
-            onChange={ev => { props.state.tentativeUsername = ev.target.value; refresh(); }}
+            value={uiState.tentativeUsername}
+            onChange={(ev) => { uiState.setTentativeUsername(ev.target.value); }}
             />
         </div>
         <div>
           <input
             type="password"
             placeholder="Password"
-            value={props.state.tentativePassword}
-            onChange={ev => { props.state.tentativePassword = ev.target.value; refresh(); }}
+            value={uiState.tentativePassword}
+            onChange={(ev) => { uiState.setTentativePassword(ev.target.value); }}
             />
         </div>
         <div>
-          <input type="submit" onClick={ev => { ev.preventDefault(); tryNewLogIn().catch(reportRejection); }} disabled={props.state.loginState.state === "downloading"} value="Log in" />
+          <input type="submit" onClick={ev => { ev.preventDefault(); tryNewLogIn(uiState).catch(reportRejection); }} disabled={uiState.loginState.state === "downloading"} value="Log in" />
           &nbsp;
-          {props.state.loginState.state === "downloading" ? <span>Logging in...</span> :
-           props.state.loginState.state === "failed" ? <span style={{ 'fontWeight': 'bold', color: 'red' }}>Login failed.</span> :
-           props.state.loginState.state === "done" ? <span style={{ 'fontWeight': 'bold', color: 'green' }}>Login successful.</span> :
+          {uiState.loginState.state === "downloading" ? <span>Logging in...</span> :
+           uiState.loginState.state === "failed" ? <span style={{ 'fontWeight': 'bold', color: 'red' }}>Login failed.</span> :
+           uiState.loginState.state === "done" ? <span style={{ 'fontWeight': 'bold', color: 'green' }}>Login successful.</span> :
            null
            }
         </div>
@@ -660,7 +676,7 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
         <div>
           <hr />
           <label>
-            <input type="checkbox" checked={uiState.settings.enableReporting} onChange={ev => { updateReporting(ev.target.checked); }} />
+            <input type="checkbox" checked={uiState.settings.enableReporting} onChange={ev => { updateReporting(uiState, ev.target.checked); }} />
             &nbsp;Automatically report errors if something goes wrong
           </label>
         </div>
@@ -678,10 +694,6 @@ const MainComponent: React.SFC<{ state: UiState }> = (props) => {
   </div>
 };
 
-const refresh = () => {
-  ReactDOM.render(<MainComponent state={uiState} />, container);
-}
-
 const sendMessageToBackground = (payload: Protocol.NetflixOpensubtitlesPayload) => {
   window.postMessage({
     'tag': 'netflix-opensubtitles-message',
@@ -691,11 +703,13 @@ const sendMessageToBackground = (payload: Protocol.NetflixOpensubtitlesPayload) 
 };
 
 window.addEventListener('message', ev => {
+  const uiState = useStore.getState();
+
   if (ev.data['tag'] === "netflix-opensubtitles-message" && ev.data['direction'] === "from-background") {
     const message = (ev.data as Protocol.NetflixOpensubtitlesMessage).payload;
 
     if (message.type == "page-action-clicked") {
-      toggleSubtitleDialog();
+      toggleSubtitleDialog(uiState);
     } else if (message.type == "opensubtitles-response") {
       const [ resolve, reject ] = pendingCalls[message.requestId];
       if (message.response.type === 'error') {
@@ -725,8 +739,8 @@ const callOpenSubtitles = <Method extends Protocol.Method>(method: Method, reque
 const checkPlaying = () => {
   let newPlayingEpisode: VideoInfo | null = null;
 
-  const titleElem = $('div.video-title').get();
-  if (titleElem) {
+  const titleElem = $('[data-uia="video-title"]').get();
+  if (titleElem.length !== 0) {
     const seriesTitleElem = $(titleElem).find('h4');
     const episodeNumAndTitleElem = $(titleElem).find('span');
 
@@ -757,30 +771,41 @@ const checkPlaying = () => {
     }
   }
 
+  const uiState = useStore.getState();
+
   const oldEpisode = uiState.playingContent;
   if (!oldEpisode && newPlayingEpisode) {
     sendMessageToBackground({ type: "show-page-action" });
-  } else if (oldEpisode && !newPlayingEpisode || JSON.stringify(newPlayingEpisode) !== JSON.stringify(oldEpisode)) {
-    uiState.subtitleDialogOpen = false;
-    uiState.aboutDialogOpen = false;
-    uiState.subtitles = { state: "idle" };
-    uiState.convertedSub = { state: "idle" };
-    sendMessageToBackground({ type: "hide-page-action" });
   }
-  uiState.playingContent = newPlayingEpisode;
-  refresh();
+  
+  if (newPlayingEpisode) {
+    if (JSON.stringify(newPlayingEpisode) !== JSON.stringify(oldEpisode)) {
+      uiState.setPlayingContent(newPlayingEpisode);
+      uiState.setSubtitleDialogOpen(false);
+      uiState.setAboutDialogOpen(false);
+      uiState.setSubtitles({ state: "idle" });
+      uiState.setConvertedSub({ state: "idle" });
+      sendMessageToBackground({ type: "hide-page-action" });
+    }
+  }
+
+  // We don't reset playingContent to null because we don't know if the user has actually left the player
+  // or if the toolbar was just hidden.
 };
 
 $(() => {
-  container = document.createElement('div');
+  const container = document.createElement('div');
 
   $(document.body)
     .append(container)
     .on('keydown', ev => {
+      const uiState = useStore.getState();
       if (ev.key.toLowerCase() === "d" && !uiState.subtitleDialogOpen) {
-        openSubtitleDialog();
+        openSubtitleDialog(uiState);
       }
     });
+
+  ReactDOM.render(<MainComponent />, container)
 
   setInterval(checkPlaying, 250);
 });

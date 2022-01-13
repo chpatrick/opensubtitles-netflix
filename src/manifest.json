@@ -1,33 +1,45 @@
-  {
-    "name": "OpenSubtitles for Netflix",
-    "version": "1.18",
-    "description": "Load OpenSubtitles subtitles on Netflix",
-    "background": {
-      "scripts": ["background.js"],
-      "persistent": false
-    },
-    "page_action": {
-      "default_title": "Download subtitles"
-    },
-    "permissions": [
-      "activeTab",
-      "https://api.opensubtitles.org"
-    ],
-    "content_scripts": [
-       {
-         "matches": ["*://*.netflix.com/*"],
-         "js": ["content-script.js"],
-         "run_at": "document_start"
-       }
-     ],
-    "content_security_policy": "script-src 'self' https://*.google-analytics.com; object-src 'self'",
-    "web_accessible_resources": [
+{
+  "name": "OpenSubtitles for Netflix",
+  "version": "1.19",
+  "description": "Load OpenSubtitles subtitles on Netflix",
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "permissions": [
+    "activeTab"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.netflix.com/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src http://localhost:8080; object-src 'self';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
         "player-payload.js"
-    ],
-    "icons": {
-      "16": "logo-16.png",
-      "48": "logo-48.png",
-      "128": "logo-128.png"
-    },
-    "manifest_version": 2
-  }
+      ],
+      "matches": [
+        "*://*.netflix.com/*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "logo-16.png",
+    "48": "logo-48.png",
+    "128": "logo-128.png"
+  },
+  "manifest_version": 3,
+  "action": {},
+  "host_permissions": [
+    "https://api.opensubtitles.org/*"
+  ]
+}

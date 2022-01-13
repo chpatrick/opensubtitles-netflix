@@ -1,4 +1,3 @@
-import "./analytics.js";
 import * as Protocol from "./protocol";
 
 import * as OS from "./opensubtitles";
@@ -44,7 +43,7 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
   }
 });
 
-chrome.pageAction.onClicked.addListener(tab => {
+chrome.action.onClicked.addListener(tab => {
   chrome.tabs.sendMessage(tab.id!, {
     'tag': "netflix-opensubtitles-message",
     'direction': "from-background",

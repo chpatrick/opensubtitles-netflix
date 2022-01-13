@@ -6,7 +6,7 @@ const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = env => ({
   entry: {
-    "background": './src/background.ts',
+    "service-worker": './src/service-worker.ts',
     "player-payload": "./src/player-payload.tsx",
     "content-script": "./src/content-script.ts"
   },
@@ -45,7 +45,7 @@ module.exports = env => ({
     new webpack.ProgressPlugin(),
     new webpack.DefinePlugin({
       'OS_USER_AGENT': JSON.stringify(process.env['OS_USER_AGENT'] || 'TemporaryUserAgent'),
-      'OS_PAYLOAD_SRC': (env && env.devServer) ? "'https://localhost:8080/player-payload.js'" : "chrome.runtime.getURL('player-payload.js')",
+      'OS_PAYLOAD_SRC': "chrome.runtime.getURL('player-payload.js')",
       'OS_SENTRY_DSN': JSON.stringify(process.env['OS_SENTRY_DSN'] || null)
     }),
     new CopyWebpackPlugin([
@@ -62,7 +62,7 @@ module.exports = env => ({
     headers: {
       "Access-Control-Allow-Origin": "https://www.netflix.com",
     },
-    hot: true
+    hot: false,
   },
   optimization: {
     minimizer: [
