@@ -30,7 +30,7 @@
     "subtitle": "^2.0.1",
     "ts-loader": "^5.3.2",
     "typescript": "^3.2.2",
-    "urijs": "^1.19.1",
+    "urijs": "^1.19.11",
     "url-loader": "^4.0.0",
     "webpack": "^4.28.3",
     "webpack-cli": "^3.2.0",
